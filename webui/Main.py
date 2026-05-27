@@ -487,6 +487,23 @@ if not config.app.get("hide_config", False):
                 if value:
                     config.app[cfg_key] = value.split(",")
 
+            st.write(tr("API & Security Settings"))
+
+            rest_api_key = st.text_input(
+                tr("API Key (REST)"),
+                value=config.app.get("api_key", ""),
+                type="password",
+                key="rest_api_key_input",
+            )
+            config.app["api_key"] = rest_api_key
+
+            watermark_text = st.text_input(
+                tr("Watermark Text"),
+                value=config.app.get("watermark_text", ""),
+                key="watermark_text_input",
+            )
+            config.app["watermark_text"] = watermark_text
+
             st.write(tr("Video Source Settings"))
 
             pexels_api_key = get_keys_from_config("pexels_api_keys")
@@ -1199,5 +1216,39 @@ if start_button:
     open_task_folder(task_id)
     logger.info(tr("Video Generation Completed"))
     scroll_to_bottom()
+
+##############################################################################
+# Task Monitor
+##############################################################################
+from app.models import const
+from app.services import state as sm
+
+with st.expander(tr("Task Monitor"), expanded=False):
+    if st.button(tr("Refresh Tasks"), key="refresh_tasks"):
+        st.rerun()
+
+    _state_labels = {
+        const.TASK_STATE_PROCESSING: tr("Processing"),
+        const.TASK_STATE_COMPLETE: tr("Complete"),
+        const.TASK_STATE_FAILED: tr("Failed"),
+    }
+
+    _tasks, _total = sm.state.get_all_tasks(page=1, page_size=50)
+    if not _tasks:
+        st.info(tr("No tasks yet"))
+    else:
+        _rows = []
+        for _t in _tasks:
+            _state_val = _t.get("state", 0)
+            _rows.append(
+                {
+                    tr("Task ID"): str(_t.get("task_id", ""))[:18] + "…",
+                    tr("State"): _state_labels.get(_state_val, tr("Unknown")),
+                    tr("Progress"): f"{_t.get('progress', 0)}%",
+                }
+            )
+        st.dataframe(_rows, use_container_width=True)
+        if _total > 50:
+            st.caption(f"Showing 50 of {_total} tasks")
 
 config.save_config()

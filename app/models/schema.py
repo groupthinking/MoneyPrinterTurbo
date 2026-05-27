@@ -170,6 +170,13 @@ class VideoTermsParams:
     amount: Optional[int] = 5
 
 
+class CrossPostResult(BaseModel):
+    success: bool = False
+    platform: Optional[str] = None
+    request_id: Optional[str] = None
+    error: Optional[str] = None
+
+
 class BaseResponse(BaseModel):
     status: int = 200
     message: Optional[str] = "success"
@@ -226,6 +233,9 @@ class TaskQueryResponse(BaseResponse):
                     ],
                     "combined_videos": [
                         "http://127.0.0.1:8080/tasks/6c85c8cc-a77a-42b9-bc30-947815aa0558/combined-1.mp4"
+                    ],
+                    "cross_post_results": [
+                        {"success": True, "platform": "tiktok", "request_id": "abc123", "error": None}
                     ],
                 },
             },

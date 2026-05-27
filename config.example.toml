@@ -159,6 +159,32 @@ litellm_model_name = "openai/gpt-4o-mini"
 # If empty, the subtitle will not be generated
 subtitle_provider = "edge"
 
+##########################################################################
+# API Authentication & Monetization
+##########################################################################
+
+# Single API key for protecting the REST API.
+# Leave empty (default) to allow unauthenticated access — backward-compatible.
+# Set to any non-empty string to require `X-Api-Key: <value>` on all requests.
+api_key = ""
+
+# Watermark text burned into the top-left corner of every generated video.
+# Useful for branding or free-tier differentiation.
+# Leave empty to disable.
+# watermark_text = "@yourhandle"
+watermark_text = ""
+
+# Per-API-key daily video quota (for multi-tenant / SaaS use).
+# Keys listed here are also treated as valid API keys (in addition to `api_key`).
+# Set a key's value to -1 for unlimited, or a positive integer for a daily cap.
+# Example:
+#   [api_key_quotas]
+#   "free_tier_key_abc123"  = 5    # 5 videos/day
+#   "paid_tier_key_xyz789"  = -1   # unlimited
+#   "team_key_def456"       = 50   # 50 videos/day
+[api_key_quotas]
+# "your-key-here" = -1
+
 #
 # ImageMagick
 #

@@ -31,11 +31,10 @@ from app.models.schema import (
 )
 from app.services import state as sm
 from app.services import task as tm
+from app.services.usage import usage_tracker
 from app.utils import file_security, utils
 
-# 认证依赖项
-# router = new_router(dependencies=[Depends(base.verify_token)])
-router = new_router()
+router = new_router(dependencies=[Depends(base.verify_token)])
 
 _enable_redis = config.app.get("enable_redis", False)
 _redis_host = config.app.get("redis_host", "localhost")
@@ -140,6 +139,17 @@ def create_task(
 ):
     task_id = utils.get_uuid()
     request_id = base.get_task_id(request)
+
+    # Quota check — only enforced when api_key_quotas is configured
+    quotas = config.app.get("api_key_quotas", {})
+    if quotas:
+        api_key = base.get_api_key(request) or ""
+        allowed, reason = usage_tracker.check_and_increment(api_key)
+        if not allowed:
+            raise HttpException(
+                task_id=task_id, status_code=429, message=f"{request_id}: {reason}"
+            )
+
     try:
         task = {
             "task_id": task_id,
@@ -164,6 +174,23 @@ def create_task(
         )
 
 from fastapi import Query
+
+
+@router.get("/usage", summary="Get today's video generation counts per API key")
+def get_usage(request: Request):
+    request_id = base.get_task_id(request)
+    api_key = base.get_api_key(request)
+    quotas = config.app.get("api_key_quotas", {})
+    if api_key and quotas:
+        # return only this key's usage to the caller
+        used = usage_tracker.get_usage(api_key)
+        quota = int(quotas.get(api_key, 0))
+        data = {"api_key_suffix": api_key[-6:], "used_today": used, "daily_quota": quota}
+    else:
+        # no quota config — return aggregate view for all tracked keys
+        data = {"usage_today": usage_tracker.get_all_usage()}
+    return utils.get_response(200, data)
+
 
 @router.get("/tasks", response_model=TaskQueryResponse, summary="Get all tasks")
 def get_all_tasks(request: Request, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1)):

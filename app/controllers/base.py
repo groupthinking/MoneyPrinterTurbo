@@ -19,13 +19,18 @@ def get_api_key(request: Request):
 
 
 def verify_token(request: Request):
+    configured_key = config.app.get("api_key", "")
+    if not configured_key:
+        # auth disabled — open access (default, backward-compatible)
+        return
     token = get_api_key(request)
-    if token != config.app.get("api_key", ""):
-        request_id = get_task_id(request)
-        request_url = request.url
-        user_agent = request.headers.get("user-agent")
-        raise HttpException(
-            task_id=request_id,
-            status_code=401,
-            message=f"invalid token: {request_url}, {user_agent}",
-        )
+    if token != configured_key:
+        # also accept per-key quotas table as valid keys
+        quotas = config.app.get("api_key_quotas", {})
+        if not quotas or token not in quotas:
+            request_id = get_task_id(request)
+            raise HttpException(
+                task_id=request_id,
+                status_code=401,
+                message="invalid or missing API key",
+            )

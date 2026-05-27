@@ -619,6 +619,27 @@ def generate_video(
             text_clips.append(clip)
         video_clip = CompositeVideoClip([video_clip, *text_clips])
 
+    watermark_text = config.app.get("watermark_text", "").strip()
+    if watermark_text and font_path and os.path.exists(font_path):
+        try:
+            wm_size = max(20, int(video_width * 0.025))
+            wm_clip = (
+                TextClip(
+                    text=watermark_text,
+                    font=font_path,
+                    font_size=wm_size,
+                    color="#FFFFFF",
+                    stroke_color="#000000",
+                    stroke_width=1,
+                )
+                .with_duration(video_clip.duration)
+                .with_position((int(video_width * 0.03), int(video_height * 0.03)))
+            )
+            video_clip = CompositeVideoClip([video_clip, wm_clip])
+            logger.info(f"watermark applied: '{watermark_text}'")
+        except Exception as e:
+            logger.warning(f"failed to apply watermark: {e}")
+
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
     if bgm_file:
         try:

@@ -130,6 +130,19 @@
     "Cross-post succeeded": "Cross-posted successfully (request ID: {request_id})",
     "Cross-post failed": "Cross-post failed: {error}",
     "Please Enter Upload-Post API Key": "Please Enter the **Upload-Post API Key**",
-    "Please Enter Upload-Post Username": "Please Enter the **Upload-Post Username**"
+    "Please Enter Upload-Post Username": "Please Enter the **Upload-Post Username**",
+    "API & Security Settings": "**API & Security Settings**",
+    "API Key (REST)": "API Key for REST API (leave empty for open access)",
+    "Watermark Text": "Watermark text burned into every video (leave empty to disable)",
+    "Task Monitor": "Task Monitor",
+    "Refresh Tasks": "Refresh",
+    "No tasks yet": "No tasks yet — generate a video to see it here.",
+    "Task ID": "Task ID",
+    "State": "State",
+    "Progress": "Progress",
+    "Processing": "Processing",
+    "Complete": "Complete",
+    "Failed": "Failed",
+    "Unknown": "Unknown"
   }
 }
