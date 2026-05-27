@@ -119,6 +119,17 @@
     "Pixabay API Key added successfully": "Pixabay API Key added successfully",
     "Select Pixabay API Key to delete": "Select Pixabay API Key to delete",
     "Delete Selected Pixabay API Key": "Delete Selected Pixabay API Key",
-    "Pixabay API Key deleted successfully": "Pixabay API Key deleted successfully"
+    "Pixabay API Key deleted successfully": "Pixabay API Key deleted successfully",
+    "Cross-Post Settings": "**Cross-Post Settings** (TikTok / Instagram)",
+    "Enable Cross-Post": "Enable Upload-Post Integration",
+    "Upload-Post API Key": "Upload-Post API Key ([Get API Key](https://upload-post.com))",
+    "Upload-Post Username": "Upload-Post Username",
+    "Cross-Post Platforms": "Platforms to cross-post to",
+    "Auto Cross-Post": "Auto cross-post after video generation",
+    "Cross-Post Results": "Cross-Post Results",
+    "Cross-post succeeded": "Cross-posted successfully (request ID: {request_id})",
+    "Cross-post failed": "Cross-post failed: {error}",
+    "Please Enter Upload-Post API Key": "Please Enter the **Upload-Post API Key**",
+    "Please Enter Upload-Post Username": "Please Enter the **Upload-Post Username**"
   }
 }

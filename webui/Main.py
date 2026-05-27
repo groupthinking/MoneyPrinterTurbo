@@ -501,6 +501,46 @@ if not config.app.get("hide_config", False):
             )
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
+            st.write(tr("Cross-Post Settings"))
+
+            upload_post_enabled = st.checkbox(
+                tr("Enable Cross-Post"),
+                value=config.app.get("upload_post_enabled", False),
+            )
+            config.app["upload_post_enabled"] = upload_post_enabled
+
+            upload_post_api_key = st.text_input(
+                tr("Upload-Post API Key"),
+                value=config.app.get("upload_post_api_key", ""),
+                type="password",
+            )
+            if upload_post_api_key:
+                config.app["upload_post_api_key"] = upload_post_api_key
+
+            upload_post_username = st.text_input(
+                tr("Upload-Post Username"),
+                value=config.app.get("upload_post_username", ""),
+            )
+            if upload_post_username:
+                config.app["upload_post_username"] = upload_post_username
+
+            _platform_options = ["tiktok", "instagram"]
+            _saved_platforms = config.app.get("upload_post_platforms", ["tiktok", "instagram"])
+            if isinstance(_saved_platforms, str):
+                _saved_platforms = [_saved_platforms]
+            upload_post_platforms = st.multiselect(
+                tr("Cross-Post Platforms"),
+                options=_platform_options,
+                default=[p for p in _saved_platforms if p in _platform_options],
+            )
+            config.app["upload_post_platforms"] = upload_post_platforms or _platform_options
+
+            upload_post_auto = st.checkbox(
+                tr("Auto Cross-Post"),
+                value=config.app.get("upload_post_auto_upload", False),
+            )
+            config.app["upload_post_auto_upload"] = upload_post_auto
+
 llm_provider = config.app.get("llm_provider", "").lower()
 panel = st.columns(3)
 left_panel = panel[0]
@@ -1142,6 +1182,19 @@ if start_button:
                 player_cols[i * 2 + 1].video(url)
     except Exception:
         pass
+
+    cross_post_results = result.get("cross_post_results") or []
+    if cross_post_results:
+        st.write(f"**{tr('Cross-Post Results')}**")
+        for cp in cross_post_results:
+            if cp.get("success"):
+                st.success(
+                    tr("Cross-post succeeded").format(request_id=cp.get("request_id", ""))
+                )
+            else:
+                st.warning(
+                    tr("Cross-post failed").format(error=cp.get("error", "unknown error"))
+                )
 
     open_task_folder(task_id)
     logger.info(tr("Video Generation Completed"))
