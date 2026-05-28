@@ -10,12 +10,15 @@ from app.config import config
 class UsageTracker:
     def __init__(self):
         self._lock = threading.Lock()
-        # {api_key: {date_str: count}}
         self._counters: dict[str, dict[str, int]] = {}
+
+    def _quotas(self) -> dict:
+        # [api_key_quotas] is a top-level TOML section, not nested under [app]
+        return config._cfg.get("api_key_quotas", {}) or {}
 
     def _get_quota(self, api_key: str) -> int:
         """Return daily video quota for a key. -1 = unlimited, 0 = blocked/unknown."""
-        quotas = config.app.get("api_key_quotas", {})
+        quotas = self._quotas()
         if not quotas:
             return -1
         return int(quotas.get(api_key, 0))

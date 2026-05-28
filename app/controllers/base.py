@@ -26,7 +26,7 @@ def verify_token(request: Request):
     token = get_api_key(request)
     if token != configured_key:
         # also accept per-key quotas table as valid keys
-        quotas = config.app.get("api_key_quotas", {})
+        quotas = config._cfg.get("api_key_quotas", {})
         if not quotas or token not in quotas:
             request_id = get_task_id(request)
             raise HttpException(

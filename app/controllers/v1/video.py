@@ -142,7 +142,7 @@ def create_task(
     request_id = base.get_task_id(request)
 
     # Quota check — only enforced when api_key_quotas is configured
-    quotas = config.app.get("api_key_quotas", {})
+    quotas = config._cfg.get("api_key_quotas", {})
     if quotas:
         api_key = base.get_api_key(request) or ""
         allowed, reason = usage_tracker.check_and_increment(api_key)
@@ -181,7 +181,7 @@ from fastapi import Query
 def get_usage(request: Request):
     request_id = base.get_task_id(request)
     api_key = base.get_api_key(request)
-    quotas = config.app.get("api_key_quotas", {})
+    quotas = config._cfg.get("api_key_quotas", {})
     if api_key and quotas:
         # return only this key's usage to the caller
         used = usage_tracker.get_usage(api_key)
