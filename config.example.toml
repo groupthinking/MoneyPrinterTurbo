@@ -174,6 +174,35 @@ api_key = ""
 # watermark_text = "@yourhandle"
 watermark_text = ""
 
+##########################################################################
+# Affiliate Marketing Networks
+##########################################################################
+
+########## Amazon Associates (PA API 5.0)
+# Register at https://affiliate-program.amazon.com
+# Then get PA API credentials at https://webservices.amazon.com/paapi5/documentation/register-for-pa-api.html
+amazon_access_key = ""
+amazon_secret_key = ""
+amazon_partner_tag = ""          # your Associates tag, e.g. "mytag-20"
+amazon_region = "us-east-1"      # us-east-1 for US; eu-west-1 for UK/EU
+amazon_host = "webservices.amazon.com"  # or webservices.amazon.co.uk etc.
+
+########## ClickBank
+# Register at https://clickbank.com
+# Your account nickname is the affiliate_id used to construct hoplinks
+clickbank_affiliate_id = ""
+
+########## CJ Affiliate
+# Register at https://www.cj.com
+# Personal Access Token from https://members.cj.com/member/publisher/api-keys.do
+cj_api_key = ""
+cj_website_id = ""               # your CJ publisher/website ID
+
+########## Awin
+# Register at https://www.awin.com
+awin_api_key = ""
+awin_publisher_id = ""
+
 # Per-API-key daily video quota (for multi-tenant / SaaS use).
 # Keys listed here are also treated as valid API keys (in addition to `api_key`).
 # Set a key's value to -1 for unlimited, or a positive integer for a daily cap.

@@ -31,6 +31,7 @@ from app.models.schema import (
 )
 from app.services import state as sm
 from app.services import task as tm
+from app.services.affiliate import SUPPORTED_NETWORKS, resolve_product
 from app.services.usage import usage_tracker
 from app.utils import file_security, utils
 
@@ -190,6 +191,113 @@ def get_usage(request: Request):
         # no quota config — return aggregate view for all tracked keys
         data = {"usage_today": usage_tracker.get_all_usage()}
     return utils.get_response(200, data)
+
+
+from pydantic import BaseModel as _BaseModel
+
+
+class ProductResolveRequest(_BaseModel):
+    network: str = "amazon"
+    product_id: str
+    affiliate_tag: str = ""
+    # manual-mode fields
+    title: str = ""
+    description: str = ""
+    price: str = ""
+    category: str = ""
+
+
+class ProductVideoRequest(TaskVideoRequest):
+    network: str = "amazon"
+    product_id: str = ""
+    affiliate_tag: str = ""
+
+
+@router.post(
+    "/products/resolve",
+    summary="Resolve a product ID to affiliate metadata",
+)
+def resolve_product_info(request: Request, body: ProductResolveRequest):
+    request_id = base.get_task_id(request)
+    if body.network not in SUPPORTED_NETWORKS:
+        raise HttpException(
+            task_id=request_id,
+            status_code=400,
+            message=f"unsupported network '{body.network}'. choose from: {SUPPORTED_NETWORKS}",
+        )
+    try:
+        info = resolve_product(
+            network=body.network,
+            product_id=body.product_id,
+            affiliate_tag=body.affiliate_tag,
+            title=body.title,
+            description=body.description,
+            price=body.price,
+            category=body.category,
+        )
+        return utils.get_response(200, {
+            "title": info.title,
+            "description": info.description,
+            "price": info.price,
+            "category": info.category,
+            "brand": info.brand,
+            "affiliate_url": info.affiliate_url,
+            "network": info.network,
+            "product_id": info.product_id,
+        })
+    except Exception as e:
+        raise HttpException(task_id=request_id, status_code=400, message=str(e))
+
+
+@router.post(
+    "/products/video",
+    response_model=TaskResponse,
+    summary="Generate an affiliate product video",
+)
+def create_product_video(request: Request, body: ProductVideoRequest):
+    """
+    Resolve product metadata, generate a review script, and kick off the
+    full video pipeline. The affiliate URL is injected into the cross-post
+    caption automatically.
+    """
+    request_id = base.get_task_id(request)
+
+    # resolve product first
+    try:
+        info = resolve_product(
+            network=body.network or "manual",
+            product_id=body.product_id or body.video_subject,
+            affiliate_tag=body.affiliate_tag,
+        )
+    except Exception as e:
+        # if resolution fails, fall back to whatever the caller provided
+        logger.warning(f"product resolve failed, using manual data: {e}")
+        from app.services.affiliate import ProductInfo
+        info = ProductInfo(
+            title=body.video_subject,
+            affiliate_url=body.affiliate_url or "",
+            network="manual",
+        )
+
+    # generate a product-review script if none was provided
+    if not body.video_script and info.title:
+        from app.services.llm import generate_product_script
+        body.video_script = generate_product_script(
+            title=info.title,
+            description=info.description,
+            price=info.price,
+            category=info.category,
+            brand=info.brand,
+            language=body.video_language or "",
+            paragraph_number=body.paragraph_number or 1,
+        )
+
+    # populate affiliate fields
+    body.video_subject = body.video_subject or info.title
+    body.affiliate_url = info.affiliate_url
+    body.affiliate_network = info.network
+
+    return create_task(request, body, stop_at="video")
 
 
 @router.get("/tasks", response_model=TaskQueryResponse, summary="Get all tasks")

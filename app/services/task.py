@@ -357,10 +357,14 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     cross_post_results = []
     if upload_post.upload_post_service.is_configured() and upload_post.upload_post_service.auto_upload:
         logger.info("\n\n## cross-posting videos to TikTok/Instagram")
+        affiliate_url = getattr(params, "affiliate_url", "") or ""
+        include_disclosure = getattr(params, "affiliate_disclosure", True)
         for video_path in final_video_paths:
-            result = upload_post.cross_post_video(
+            result = upload_post.upload_post_service.upload_video(
                 video_path=video_path,
-                title=params.video_subject or "Check out this video! #shorts #viral"
+                title=params.video_subject or "Check out this video! #shorts #viral",
+                affiliate_url=affiliate_url,
+                include_disclosure=include_disclosure,
             )
             cross_post_results.append(result)
             if result.get('success'):

@@ -87,6 +87,11 @@ class VideoParams(BaseModel):
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore video_script and disable subtitle
     video_language: Optional[str] = ""  # auto detect
 
+    # Affiliate marketing fields (optional)
+    affiliate_url: Optional[str] = ""       # Final affiliate/tracking URL
+    affiliate_network: Optional[str] = ""   # amazon | clickbank | cj | awin | manual
+    affiliate_disclosure: Optional[bool] = True  # Inject #ad in cross-post caption
+
     voice_name: Optional[str] = ""
     voice_volume: Optional[float] = 1.0
     voice_rate: Optional[float] = 1.0

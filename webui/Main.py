@@ -559,14 +559,194 @@ if not config.app.get("hide_config", False):
             config.app["upload_post_auto_upload"] = upload_post_auto
 
 llm_provider = config.app.get("llm_provider", "").lower()
-panel = st.columns(3)
-left_panel = panel[0]
-middle_panel = panel[1]
-right_panel = panel[2]
 
+##############################################################################
+# Mode selector: Video Mode vs Product (Affiliate) Mode
+##############################################################################
+from app.services import affiliate as _affiliate_svc
+from app.services.llm import generate_product_script as _gen_product_script
+
+_mode_tab, _product_tab = st.tabs([tr("Video Mode"), tr("Product Mode")])
+
+# Shared initialisation — params is populated by whichever tab is active
 params = VideoParams(video_subject="")
 uploaded_files = []
 uploaded_audio_file = None
+
+##############################################################################
+# Product Mode tab
+##############################################################################
+with _product_tab:
+    with st.container(border=True):
+        st.write(tr("Affiliate Settings"))
+
+        _networks = _affiliate_svc.SUPPORTED_NETWORKS
+        _net_idx = 0
+        _saved_net = config.app.get("affiliate_network", "amazon")
+        if _saved_net in _networks:
+            _net_idx = _networks.index(_saved_net)
+
+        _network = st.selectbox(
+            tr("Affiliate Network"),
+            options=_networks,
+            index=_net_idx,
+            key="aff_network",
+        )
+        config.app["affiliate_network"] = _network
+
+        _product_id = st.text_input(
+            tr("Product ID / ASIN / URL"),
+            placeholder="B08N5WRWNW  or  https://amazon.com/dp/B08N5WRWNW  or  vendor-id",
+            key="aff_product_id",
+        )
+        _affiliate_tag = st.text_input(
+            tr("Affiliate Tag / ID"),
+            value=config.app.get(f"{_network}_partner_tag",
+                   config.app.get(f"{_network}_affiliate_id",
+                   config.app.get(f"{_network}_publisher_id", ""))),
+            key="aff_tag",
+        )
+        _disclosure = st.checkbox(
+            tr("FTC Disclosure"),
+            value=True,
+            key="aff_disclosure",
+        )
+
+    # Fetch + resolve product details
+    if "aff_product_info" not in st.session_state:
+        st.session_state["aff_product_info"] = {}
+
+    if st.button(tr("Fetch Product"), key="aff_fetch_btn") and _product_id:
+        with st.spinner(tr("Fetching product")):
+            try:
+                _info = _affiliate_svc.resolve_product(
+                    network=_network,
+                    product_id=_product_id,
+                    affiliate_tag=_affiliate_tag,
+                )
+                st.session_state["aff_product_info"] = {
+                    "title": _info.title,
+                    "description": _info.description,
+                    "price": _info.price,
+                    "category": _info.category,
+                    "brand": _info.brand,
+                    "affiliate_url": _info.affiliate_url,
+                    "network": _info.network,
+                }
+                st.success(tr("Product fetched"))
+            except Exception as _e:
+                st.error(tr("Product fetch failed").format(error=str(_e)))
+
+    _pinfo = st.session_state.get("aff_product_info", {})
+
+    with st.container(border=True):
+        st.write(tr("Manual product entry"))
+        _p_title = st.text_input(
+            tr("Product Title"),
+            value=_pinfo.get("title", ""),
+            key="aff_title",
+        )
+        _p_desc = st.text_area(
+            tr("Product Description"),
+            value=_pinfo.get("description", ""),
+            height=100,
+            key="aff_desc",
+        )
+        _p_price = st.text_input(
+            tr("Product Price"),
+            value=_pinfo.get("price", ""),
+            key="aff_price",
+        )
+        _p_aff_url = st.text_input(
+            tr("Affiliate URL"),
+            value=_pinfo.get("affiliate_url", ""),
+            key="aff_url",
+        )
+
+    _product_generate = st.button(
+        tr("Generate Affiliate Video"),
+        use_container_width=True,
+        type="primary",
+        key="product_generate_btn",
+    )
+
+    if _product_generate:
+        st.session_state["_product_mode_active"] = True
+        if not _p_title and not _product_id:
+            st.error(tr("Please Enter the Video Subject"))
+            st.stop()
+
+        config.save_config()
+        task_id = str(uuid4())
+
+        _script = _gen_product_script(
+            title=_p_title or _product_id,
+            description=_p_desc,
+            price=_p_price,
+            category=_pinfo.get("category", ""),
+            brand=_pinfo.get("brand", ""),
+            language="",
+            paragraph_number=1,
+        )
+
+        params.video_subject = _p_title or _product_id
+        params.video_script = _script
+        params.affiliate_url = _p_aff_url
+        params.affiliate_network = _network
+        params.affiliate_disclosure = _disclosure
+
+        log_container = st.empty()
+        log_records = []
+
+        def _aff_log(msg):
+            if config.ui.get("hide_log"):
+                return
+            with log_container:
+                log_records.append(msg)
+                st.code("\n".join(log_records))
+
+        logger.add(_aff_log)
+        st.toast(tr("Generating Video"))
+        logger.info(tr("Start Generating Video"))
+        scroll_to_bottom()
+
+        result = tm.start(task_id=task_id, params=params)
+        if not result or "videos" not in result:
+            st.error(tr("Video Generation Failed"))
+            st.stop()
+
+        video_files = result.get("videos", [])
+        st.success(tr("Video Generation Completed"))
+        try:
+            if video_files:
+                _cols = st.columns(len(video_files) * 2 + 1)
+                for _i, _url in enumerate(video_files):
+                    _cols[_i * 2 + 1].video(_url)
+        except Exception:
+            pass
+
+        if _p_aff_url:
+            st.info(f"Affiliate link for caption: {_p_aff_url}")
+
+        _cp = result.get("cross_post_results") or []
+        if _cp:
+            for _r in _cp:
+                if _r.get("success"):
+                    st.success(tr("Cross-post succeeded").format(request_id=_r.get("request_id", "")))
+                else:
+                    st.warning(tr("Cross-post failed").format(error=_r.get("error", "")))
+
+        open_task_folder(task_id)
+        scroll_to_bottom()
+
+##############################################################################
+# Video Mode tab — original 3-column panel
+##############################################################################
+with _mode_tab:
+    panel = st.columns(3)
+    left_panel = panel[0]
+    middle_panel = panel[1]
+    right_panel = panel[2]
 
 with left_panel:
     with st.container(border=True):
@@ -1098,8 +1278,9 @@ with right_panel:
                     config.save_config()
                     st.success(tr("Pixabay API Key deleted successfully"))
 
+# Only show the Video Mode generate button; Product Mode has its own button inside the tab
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
-if start_button:
+if start_button and not st.session_state.get("_product_mode_active"):
     config.save_config()
     task_id = str(uuid4())
     if not params.video_subject and not params.video_script:
