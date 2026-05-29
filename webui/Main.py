@@ -531,15 +531,19 @@ if not config.app.get("hide_config", False):
                 value=config.app.get("upload_post_api_key", ""),
                 type="password",
             )
-            if upload_post_api_key:
-                config.app["upload_post_api_key"] = upload_post_api_key
+            config.app["upload_post_api_key"] = upload_post_api_key
 
             upload_post_username = st.text_input(
                 tr("Upload-Post Username"),
                 value=config.app.get("upload_post_username", ""),
             )
-            if upload_post_username:
-                config.app["upload_post_username"] = upload_post_username
+            config.app["upload_post_username"] = upload_post_username
+
+            if upload_post_enabled:
+                if not upload_post_api_key:
+                    st.warning(tr("Please Enter Upload-Post API Key"))
+                if not upload_post_username:
+                    st.warning(tr("Please Enter Upload-Post Username"))
 
             _platform_options = ["tiktok", "instagram"]
             _saved_platforms = config.app.get("upload_post_platforms", ["tiktok", "instagram"])
