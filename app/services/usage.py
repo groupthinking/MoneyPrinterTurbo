@@ -18,6 +18,14 @@ class UsageTracker:
 
     def _get_quota(self, api_key: str) -> int:
         """Return daily video quota for a key. -1 = unlimited, 0 = blocked/unknown."""
+        # SQLite billing keys take precedence over config
+        try:
+            from app.services.billing import get_key_info
+            info = get_key_info(api_key)
+            if info is not None:
+                return info["daily_quota"]
+        except Exception:
+            pass
         quotas = self._quotas()
         if not quotas:
             return -1

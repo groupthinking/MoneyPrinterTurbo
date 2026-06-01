@@ -123,6 +123,25 @@ api_key = ""
 watermark_text = ""
 
 ##########################################################################
+# Stripe Billing (optional — enables /api/v1/billing/* endpoints)
+#
+# 1. Create products + prices in your Stripe dashboard
+# 2. Paste the Price IDs below (price_starter / price_pro)
+# 3. Add a webhook pointing to POST /api/v1/billing/webhook
+#    Events: checkout.session.completed
+#            customer.subscription.deleted
+#            customer.subscription.paused
+#
+# Tiers:  free    =  5 videos/day (no payment — POST /api/v1/billing/keys/free)
+#         starter = 30 videos/day
+#         pro     = unlimited
+##########################################################################
+stripe_secret_key = ""           # sk_live_... or sk_test_...
+stripe_webhook_secret = ""       # whsec_...
+stripe_price_starter = ""        # price_... (Stripe Price ID for starter tier)
+stripe_price_pro = ""            # price_... (Stripe Price ID for pro tier)
+
+##########################################################################
 # Cross-Post (TikTok / Instagram via Upload-Post)
 # https://upload-post.com
 ##########################################################################
