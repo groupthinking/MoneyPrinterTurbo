@@ -570,7 +570,7 @@ llm_provider = config.app.get("llm_provider", "").lower()
 from app.services import affiliate as _affiliate_svc
 from app.services.llm import generate_product_script as _gen_product_script
 
-_mode_tab, _product_tab = st.tabs([tr("Video Mode"), tr("Product Mode")])
+_mode_tab, _product_tab, _bulk_tab = st.tabs([tr("Video Mode"), tr("Product Mode"), tr("Bulk Mode")])
 
 # Shared initialisation — params is populated by whichever tab is active
 params = VideoParams(video_subject="")
@@ -1401,6 +1401,87 @@ if start_button and not st.session_state.get("_product_mode_active"):
     open_task_folder(task_id)
     logger.info(tr("Video Generation Completed"))
     scroll_to_bottom()
+
+##############################################################################
+##############################################################################
+# Bulk Mode tab
+##############################################################################
+from app.services import batch as _batch_svc
+
+with _bulk_tab:
+    st.subheader(tr("Bulk Video Generation"))
+
+    with st.container(border=True):
+        st.write(tr("Batch — run once"))
+        _bulk_topics_raw = st.text_area(
+            tr("Topics (one per line)"),
+            value="",
+            height=150,
+            placeholder="Best budget headphones 2025\nTop 5 gaming mice under $50\n...",
+            key="bulk_topics",
+        )
+        _bulk_name = st.text_input(tr("Batch Name"), value="", key="bulk_name")
+
+        if st.button(tr("Submit Batch"), key="submit_batch"):
+            _bulk_topics = [t.strip() for t in _bulk_topics_raw.strip().splitlines() if t.strip()]
+            if not _bulk_topics:
+                st.warning(tr("Please enter at least one topic"))
+            else:
+                _bulk_params = params.model_dump()
+                _batch_result = _batch_svc.create_batch(
+                    topics=_bulk_topics,
+                    params_dict=_bulk_params,
+                    name=_bulk_name or f"Batch {len(_bulk_topics)} topics",
+                )
+                st.success(f"Batch submitted — ID: `{_batch_result['batch_id']}` ({_batch_result['total']} tasks queued)")
+
+    with st.container(border=True):
+        st.write(tr("Schedule — recurring"))
+        _sched_topics_raw = st.text_area(
+            tr("Topics (one per line)"),
+            value="",
+            height=100,
+            placeholder="Daily trending tech topic\n...",
+            key="sched_topics",
+        )
+        _sched_name = st.text_input(tr("Schedule Name"), value="", key="sched_name")
+        _sched_interval = st.number_input(
+            tr("Repeat every N hours"),
+            min_value=1.0,
+            max_value=720.0,
+            value=24.0,
+            step=1.0,
+            key="sched_interval",
+        )
+
+        if st.button(tr("Create Schedule"), key="create_schedule"):
+            _sched_topics = [t.strip() for t in _sched_topics_raw.strip().splitlines() if t.strip()]
+            if not _sched_topics:
+                st.warning(tr("Please enter at least one topic"))
+            else:
+                _job_id = _batch_svc.add_scheduled_job(
+                    topics=_sched_topics,
+                    params_dict=params.model_dump(),
+                    interval_hours=float(_sched_interval),
+                    name=_sched_name or f"Schedule every {int(_sched_interval)}h",
+                )
+                st.success(f"Scheduled job created — ID: `{_job_id}` (runs every {int(_sched_interval)}h)")
+
+    with st.expander(tr("Active Schedules"), expanded=False):
+        if st.button(tr("Refresh"), key="refresh_schedules"):
+            st.rerun()
+        _jobs = _batch_svc.list_scheduled_jobs()
+        if not _jobs:
+            st.info(tr("No scheduled jobs"))
+        else:
+            for _job in _jobs:
+                _cols = st.columns([3, 2, 2, 1])
+                _cols[0].write(f"**{_job['name']}**")
+                _cols[1].write(f"Every {_job['interval_hours']}h")
+                _cols[2].write(f"Next: {str(_job['next_run_at'])[:16]}")
+                if _cols[3].button("✕", key=f"del_job_{_job['id']}"):
+                    _batch_svc.remove_scheduled_job(_job["id"])
+                    st.rerun()
 
 ##############################################################################
 # Task Monitor

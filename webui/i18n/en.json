@@ -160,6 +160,20 @@
     "Processing": "Processing",
     "Complete": "Complete",
     "Failed": "Failed",
-    "Unknown": "Unknown"
+    "Unknown": "Unknown",
+    "Bulk Mode": "Bulk Mode",
+    "Bulk Video Generation": "**Bulk Video Generation**",
+    "Batch — run once": "**Batch — Run Once**",
+    "Topics (one per line)": "Topics (one per line)",
+    "Batch Name": "Batch name (optional)",
+    "Submit Batch": "Submit Batch",
+    "Please enter at least one topic": "Please enter at least one topic.",
+    "Schedule — recurring": "**Schedule — Recurring**",
+    "Schedule Name": "Schedule name (optional)",
+    "Repeat every N hours": "Repeat every N hours",
+    "Create Schedule": "Create Schedule",
+    "Active Schedules": "Active Schedules",
+    "Refresh": "Refresh",
+    "No scheduled jobs": "No scheduled jobs yet."
   }
 }
