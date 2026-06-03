@@ -193,7 +193,7 @@ class TestLiteLLMProvider(unittest.TestCase):
 
 FOUNDRY_KEY = os.environ.get("ANTHROPIC_FOUNDRY_API_KEY", "")
 FOUNDRY_BASE = "https://amanrai-test-resource.services.ai.azure.com/anthropic"
-FOUNDRY_MODEL = "azure_ai/claude-sonnet-4-6"
+FOUNDRY_MODEL = "azure_ai/claude-opus-4-8"
 
 
 @unittest.skipUnless(FOUNDRY_KEY, "ANTHROPIC_FOUNDRY_API_KEY not set")
