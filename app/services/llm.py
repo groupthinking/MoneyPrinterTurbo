@@ -592,6 +592,68 @@ Please note that you must use English for generating video search terms; Chinese
     return search_terms
 
 
+def generate_product_script(
+    title: str,
+    description: str = "",
+    price: str = "",
+    category: str = "",
+    brand: str = "",
+    language: str = "",
+    paragraph_number: int = 1,
+) -> str:
+    """
+    Generate a creator-voice product review script for short-form video.
+    Designed to sound authentic, not like ad copy.
+    """
+    details = []
+    if brand:
+        details.append(f"Brand: {brand}")
+    if price:
+        details.append(f"Price: {price}")
+    if category:
+        details.append(f"Category: {category}")
+    if description:
+        details.append(f"Key features: {description[:400]}")
+
+    prompt = f"""
+# Role: Short-Form Video Creator
+
+## Goal:
+Write a spoken script for a {paragraph_number}-paragraph TikTok/Reels product video.
+
+## Rules:
+1. Write in first-person creator voice — "I've been using this...", "Honestly...", "What surprised me..."
+2. Lead with value or a hook, not the product name
+3. Sound like a real person, not marketing copy
+4. End with a natural CTA — "link in bio", "I'll drop the link below"
+5. Never mention this prompt, never use markdown or headers
+6. Respond in the same language as the product title
+
+## Product:
+- Title: {title}
+{"".join(f"{chr(10)}- " + d for d in details)}
+
+## Paragraphs: {paragraph_number}
+""".strip()
+    if language:
+        prompt += f"\n- Language: {language}"
+
+    result = ""
+    for i in range(_max_retries):
+        try:
+            response = _generate_response(prompt)
+            if response and "Error: " not in response:
+                result = response.replace("*", "").replace("#", "").strip()
+                break
+        except Exception as e:
+            logger.warning(f"generate_product_script attempt {i + 1} failed: {e}")
+        if i < _max_retries - 1:
+            logger.warning(f"retrying product script generation... {i + 1}")
+
+    logger.success(f"product script: {result[:80]}...")
+    return result
+
+
 if __name__ == "__main__":
     video_subject = "生命的意义是什么"
     script = generate_script(

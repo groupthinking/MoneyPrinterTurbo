@@ -87,6 +87,11 @@ class VideoParams(BaseModel):
     custom_audio_file: Optional[str] = None  # Custom audio file path, will ignore video_script and disable subtitle
     video_language: Optional[str] = ""  # auto detect
 
+    # Affiliate marketing fields (optional)
+    affiliate_url: Optional[str] = ""       # Final affiliate/tracking URL
+    affiliate_network: Optional[str] = ""   # amazon | clickbank | cj | awin | manual
+    affiliate_disclosure: Optional[bool] = True  # Inject #ad in cross-post caption
+
     voice_name: Optional[str] = ""
     voice_volume: Optional[float] = 1.0
     voice_rate: Optional[float] = 1.0
@@ -170,6 +175,13 @@ class VideoTermsParams:
     amount: Optional[int] = 5
 
 
+class CrossPostResult(BaseModel):
+    success: bool = False
+    platform: Optional[str] = None
+    request_id: Optional[str] = None
+    error: Optional[str] = None
+
+
 class BaseResponse(BaseModel):
     status: int = 200
     message: Optional[str] = "success"
@@ -226,6 +238,9 @@ class TaskQueryResponse(BaseResponse):
                     ],
                     "combined_videos": [
                         "http://127.0.0.1:8080/tasks/6c85c8cc-a77a-42b9-bc30-947815aa0558/combined-1.mp4"
+                    ],
+                    "cross_post_results": [
+                        {"success": True, "platform": "tiktok", "request_id": "abc123", "error": None}
                     ],
                 },
             },

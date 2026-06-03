@@ -487,6 +487,23 @@ if not config.app.get("hide_config", False):
                 if value:
                     config.app[cfg_key] = value.split(",")
 
+            st.write(tr("API & Security Settings"))
+
+            rest_api_key = st.text_input(
+                tr("API Key (REST)"),
+                value=config.app.get("api_key", ""),
+                type="password",
+                key="rest_api_key_input",
+            )
+            config.app["api_key"] = rest_api_key
+
+            watermark_text = st.text_input(
+                tr("Watermark Text"),
+                value=config.app.get("watermark_text", ""),
+                key="watermark_text_input",
+            )
+            config.app["watermark_text"] = watermark_text
+
             st.write(tr("Video Source Settings"))
 
             pexels_api_key = get_keys_from_config("pexels_api_keys")
@@ -501,15 +518,239 @@ if not config.app.get("hide_config", False):
             )
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
-llm_provider = config.app.get("llm_provider", "").lower()
-panel = st.columns(3)
-left_panel = panel[0]
-middle_panel = panel[1]
-right_panel = panel[2]
+            st.write(tr("Cross-Post Settings"))
 
+            upload_post_enabled = st.checkbox(
+                tr("Enable Cross-Post"),
+                value=config.app.get("upload_post_enabled", False),
+            )
+            config.app["upload_post_enabled"] = upload_post_enabled
+
+            upload_post_api_key = st.text_input(
+                tr("Upload-Post API Key"),
+                value=config.app.get("upload_post_api_key", ""),
+                type="password",
+            )
+            config.app["upload_post_api_key"] = upload_post_api_key
+
+            upload_post_username = st.text_input(
+                tr("Upload-Post Username"),
+                value=config.app.get("upload_post_username", ""),
+            )
+            config.app["upload_post_username"] = upload_post_username
+
+            if upload_post_enabled:
+                if not upload_post_api_key:
+                    st.warning(tr("Please Enter Upload-Post API Key"))
+                if not upload_post_username:
+                    st.warning(tr("Please Enter Upload-Post Username"))
+
+            _platform_options = ["tiktok", "instagram"]
+            _saved_platforms = config.app.get("upload_post_platforms", ["tiktok", "instagram"])
+            if isinstance(_saved_platforms, str):
+                _saved_platforms = [_saved_platforms]
+            upload_post_platforms = st.multiselect(
+                tr("Cross-Post Platforms"),
+                options=_platform_options,
+                default=[p for p in _saved_platforms if p in _platform_options],
+            )
+            config.app["upload_post_platforms"] = upload_post_platforms or _platform_options
+
+            upload_post_auto = st.checkbox(
+                tr("Auto Cross-Post"),
+                value=config.app.get("upload_post_auto_upload", False),
+            )
+            config.app["upload_post_auto_upload"] = upload_post_auto
+
+llm_provider = config.app.get("llm_provider", "").lower()
+
+##############################################################################
+# Mode selector: Video Mode vs Product (Affiliate) Mode
+##############################################################################
+from app.services import affiliate as _affiliate_svc
+from app.services.llm import generate_product_script as _gen_product_script
+
+_mode_tab, _product_tab, _bulk_tab = st.tabs([tr("Video Mode"), tr("Product Mode"), tr("Bulk Mode")])
+
+# Shared initialisation — params is populated by whichever tab is active
 params = VideoParams(video_subject="")
 uploaded_files = []
 uploaded_audio_file = None
+
+##############################################################################
+# Product Mode tab
+##############################################################################
+with _product_tab:
+    with st.container(border=True):
+        st.write(tr("Affiliate Settings"))
+
+        _networks = _affiliate_svc.SUPPORTED_NETWORKS
+        _net_idx = 0
+        _saved_net = config.app.get("affiliate_network", "amazon")
+        if _saved_net in _networks:
+            _net_idx = _networks.index(_saved_net)
+
+        _network = st.selectbox(
+            tr("Affiliate Network"),
+            options=_networks,
+            index=_net_idx,
+            key="aff_network",
+        )
+        config.app["affiliate_network"] = _network
+
+        _product_id = st.text_input(
+            tr("Product ID / ASIN / URL"),
+            placeholder="B08N5WRWNW  or  https://amazon.com/dp/B08N5WRWNW  or  vendor-id",
+            key="aff_product_id",
+        )
+        _affiliate_tag = st.text_input(
+            tr("Affiliate Tag / ID"),
+            value=config.app.get(f"{_network}_partner_tag",
+                   config.app.get(f"{_network}_affiliate_id",
+                   config.app.get(f"{_network}_publisher_id", ""))),
+            key="aff_tag",
+        )
+        _disclosure = st.checkbox(
+            tr("FTC Disclosure"),
+            value=True,
+            key="aff_disclosure",
+        )
+
+    # Fetch + resolve product details
+    if "aff_product_info" not in st.session_state:
+        st.session_state["aff_product_info"] = {}
+
+    if st.button(tr("Fetch Product"), key="aff_fetch_btn") and _product_id:
+        with st.spinner(tr("Fetching product")):
+            try:
+                _info = _affiliate_svc.resolve_product(
+                    network=_network,
+                    product_id=_product_id,
+                    affiliate_tag=_affiliate_tag,
+                )
+                st.session_state["aff_product_info"] = {
+                    "title": _info.title,
+                    "description": _info.description,
+                    "price": _info.price,
+                    "category": _info.category,
+                    "brand": _info.brand,
+                    "affiliate_url": _info.affiliate_url,
+                    "network": _info.network,
+                }
+                st.success(tr("Product fetched"))
+            except Exception as _e:
+                st.error(tr("Product fetch failed").format(error=str(_e)))
+
+    _pinfo = st.session_state.get("aff_product_info", {})
+
+    with st.container(border=True):
+        st.write(tr("Manual product entry"))
+        _p_title = st.text_input(
+            tr("Product Title"),
+            value=_pinfo.get("title", ""),
+            key="aff_title",
+        )
+        _p_desc = st.text_area(
+            tr("Product Description"),
+            value=_pinfo.get("description", ""),
+            height=100,
+            key="aff_desc",
+        )
+        _p_price = st.text_input(
+            tr("Product Price"),
+            value=_pinfo.get("price", ""),
+            key="aff_price",
+        )
+        _p_aff_url = st.text_input(
+            tr("Affiliate URL"),
+            value=_pinfo.get("affiliate_url", ""),
+            key="aff_url",
+        )
+
+    _product_generate = st.button(
+        tr("Generate Affiliate Video"),
+        use_container_width=True,
+        type="primary",
+        key="product_generate_btn",
+    )
+
+    if _product_generate:
+        st.session_state["_product_mode_active"] = True
+        if not _p_title and not _product_id:
+            st.error(tr("Please Enter the Video Subject"))
+            st.stop()
+
+        config.save_config()
+        task_id = str(uuid4())
+
+        _script = _gen_product_script(
+            title=_p_title or _product_id,
+            description=_p_desc,
+            price=_p_price,
+            category=_pinfo.get("category", ""),
+            brand=_pinfo.get("brand", ""),
+            language="",
+            paragraph_number=1,
+        )
+
+        params.video_subject = _p_title or _product_id
+        params.video_script = _script
+        params.affiliate_url = _p_aff_url
+        params.affiliate_network = _network
+        params.affiliate_disclosure = _disclosure
+
+        log_container = st.empty()
+        log_records = []
+
+        def _aff_log(msg):
+            if config.ui.get("hide_log"):
+                return
+            with log_container:
+                log_records.append(msg)
+                st.code("\n".join(log_records))
+
+        logger.add(_aff_log)
+        st.toast(tr("Generating Video"))
+        logger.info(tr("Start Generating Video"))
+        scroll_to_bottom()
+
+        result = tm.start(task_id=task_id, params=params)
+        if not result or "videos" not in result:
+            st.error(tr("Video Generation Failed"))
+            st.stop()
+
+        video_files = result.get("videos", [])
+        st.success(tr("Video Generation Completed"))
+        try:
+            if video_files:
+                _cols = st.columns(len(video_files) * 2 + 1)
+                for _i, _url in enumerate(video_files):
+                    _cols[_i * 2 + 1].video(_url)
+        except Exception:
+            pass
+
+        if _p_aff_url:
+            st.info(f"Affiliate link for caption: {_p_aff_url}")
+
+        _cp = result.get("cross_post_results") or []
+        if _cp:
+            for _r in _cp:
+                if _r.get("success"):
+                    st.success(tr("Cross-post succeeded").format(request_id=_r.get("request_id", "")))
+                else:
+                    st.warning(tr("Cross-post failed").format(error=_r.get("error", "")))
+
+        open_task_folder(task_id)
+        scroll_to_bottom()
+
+##############################################################################
+# Video Mode tab — original 3-column panel
+##############################################################################
+with _mode_tab:
+    panel = st.columns(3)
+    left_panel = panel[0]
+    middle_panel = panel[1]
+    right_panel = panel[2]
 
 with left_panel:
     with st.container(border=True):
@@ -1041,8 +1282,9 @@ with right_panel:
                     config.save_config()
                     st.success(tr("Pixabay API Key deleted successfully"))
 
+# Only show the Video Mode generate button; Product Mode has its own button inside the tab
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
-if start_button:
+if start_button and not st.session_state.get("_product_mode_active"):
     config.save_config()
     task_id = str(uuid4())
     if not params.video_subject and not params.video_script:
@@ -1143,8 +1385,136 @@ if start_button:
     except Exception:
         pass
 
+    cross_post_results = result.get("cross_post_results") or []
+    if cross_post_results:
+        st.write(f"**{tr('Cross-Post Results')}**")
+        for cp in cross_post_results:
+            if cp.get("success"):
+                st.success(
+                    tr("Cross-post succeeded").format(request_id=cp.get("request_id", ""))
+                )
+            else:
+                st.warning(
+                    tr("Cross-post failed").format(error=cp.get("error", "unknown error"))
+                )
+
     open_task_folder(task_id)
     logger.info(tr("Video Generation Completed"))
     scroll_to_bottom()
+
+##############################################################################
+##############################################################################
+# Bulk Mode tab
+##############################################################################
+from app.services import batch as _batch_svc
+
+with _bulk_tab:
+    st.subheader(tr("Bulk Video Generation"))
+
+    with st.container(border=True):
+        st.write(tr("Batch — run once"))
+        _bulk_topics_raw = st.text_area(
+            tr("Topics (one per line)"),
+            value="",
+            height=150,
+            placeholder="Best budget headphones 2025\nTop 5 gaming mice under $50\n...",
+            key="bulk_topics",
+        )
+        _bulk_name = st.text_input(tr("Batch Name"), value="", key="bulk_name")
+
+        if st.button(tr("Submit Batch"), key="submit_batch"):
+            _bulk_topics = [t.strip() for t in _bulk_topics_raw.strip().splitlines() if t.strip()]
+            if not _bulk_topics:
+                st.warning(tr("Please enter at least one topic"))
+            else:
+                _bulk_params = params.model_dump()
+                _batch_result = _batch_svc.create_batch(
+                    topics=_bulk_topics,
+                    params_dict=_bulk_params,
+                    name=_bulk_name or f"Batch {len(_bulk_topics)} topics",
+                )
+                st.success(f"Batch submitted — ID: `{_batch_result['batch_id']}` ({_batch_result['total']} tasks queued)")
+
+    with st.container(border=True):
+        st.write(tr("Schedule — recurring"))
+        _sched_topics_raw = st.text_area(
+            tr("Topics (one per line)"),
+            value="",
+            height=100,
+            placeholder="Daily trending tech topic\n...",
+            key="sched_topics",
+        )
+        _sched_name = st.text_input(tr("Schedule Name"), value="", key="sched_name")
+        _sched_interval = st.number_input(
+            tr("Repeat every N hours"),
+            min_value=1.0,
+            max_value=720.0,
+            value=24.0,
+            step=1.0,
+            key="sched_interval",
+        )
+
+        if st.button(tr("Create Schedule"), key="create_schedule"):
+            _sched_topics = [t.strip() for t in _sched_topics_raw.strip().splitlines() if t.strip()]
+            if not _sched_topics:
+                st.warning(tr("Please enter at least one topic"))
+            else:
+                _job_id = _batch_svc.add_scheduled_job(
+                    topics=_sched_topics,
+                    params_dict=params.model_dump(),
+                    interval_hours=float(_sched_interval),
+                    name=_sched_name or f"Schedule every {int(_sched_interval)}h",
+                )
+                st.success(f"Scheduled job created — ID: `{_job_id}` (runs every {int(_sched_interval)}h)")
+
+    with st.expander(tr("Active Schedules"), expanded=False):
+        if st.button(tr("Refresh"), key="refresh_schedules"):
+            st.rerun()
+        _jobs = _batch_svc.list_scheduled_jobs()
+        if not _jobs:
+            st.info(tr("No scheduled jobs"))
+        else:
+            for _job in _jobs:
+                _cols = st.columns([3, 2, 2, 1])
+                _cols[0].write(f"**{_job['name']}**")
+                _cols[1].write(f"Every {_job['interval_hours']}h")
+                _cols[2].write(f"Next: {str(_job['next_run_at'])[:16]}")
+                if _cols[3].button("✕", key=f"del_job_{_job['id']}"):
+                    _batch_svc.remove_scheduled_job(_job["id"])
+                    st.rerun()
+
+##############################################################################
+# Task Monitor
+##############################################################################
+from app.models import const
+from app.services import state as sm
+
+with st.expander(tr("Task Monitor"), expanded=False):
+    if st.button(tr("Refresh Tasks"), key="refresh_tasks"):
+        st.rerun()
+
+    _state_labels = {
+        const.TASK_STATE_PROCESSING: tr("Processing"),
+        const.TASK_STATE_COMPLETE: tr("Complete"),
+        const.TASK_STATE_FAILED: tr("Failed"),
+    }
+
+    _tasks, _total = sm.state.get_all_tasks(page=1, page_size=50)
+    if not _tasks:
+        st.info(tr("No tasks yet"))
+    else:
+        _rows = []
+        for _t in _tasks:
+            _state_val = _t.get("state", 0)
+            _rows.append(
+                {
+                    tr("Task ID"): str(_t.get("task_id", ""))[:18] + "…",
+                    tr("State"): _state_labels.get(_state_val, tr("Unknown")),
+                    tr("Progress"): f"{_t.get('progress', 0)}%",
+                }
+            )
+        st.dataframe(_rows, use_container_width=True)
+        if _total > 50:
+            st.caption(f"Showing 50 of {_total} tasks")
 
 config.save_config()

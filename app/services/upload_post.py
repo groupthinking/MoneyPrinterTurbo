@@ -32,7 +32,9 @@ class UploadPostService:
         video_path: str,
         title: str,
         platforms: list = None,
-        privacy_level: str = "PUBLIC_TO_EVERYONE"
+        privacy_level: str = "PUBLIC_TO_EVERYONE",
+        affiliate_url: str = "",
+        include_disclosure: bool = True,
     ) -> dict:
         """
         Upload a video to TikTok and/or Instagram.
@@ -42,10 +44,15 @@ class UploadPostService:
             title (str): Video title/caption (max 2200 chars for Instagram)
             platforms (list): List of platforms ["tiktok", "instagram"]
             privacy_level (str): Privacy level for the video
+            affiliate_url (str): Affiliate link appended to the caption
+            include_disclosure (bool): Prepend #ad for FTC compliance
 
         Returns:
             dict: API response with request_id and status
         """
+        if affiliate_url:
+            disclosure = "#ad " if include_disclosure else ""
+            title = f"{disclosure}{title}\n\n{affiliate_url}"
         if not self.is_configured():
             logger.warning("Upload-Post is not configured. Skipping cross-post.")
             return {"success": False, "error": "Upload-Post not configured"}

@@ -12,8 +12,7 @@ from loguru import logger
 from app.config import config
 from app.controllers import base
 from app.controllers.manager.base_manager import TaskQueueFullError
-from app.controllers.manager.memory_manager import InMemoryTaskManager
-from app.controllers.manager.redis_manager import RedisTaskManager
+from app.controllers.manager.instance import task_manager
 from app.controllers.v1.base import new_router
 from app.models.exception import HttpException
 from app.models.schema import (
@@ -31,33 +30,11 @@ from app.models.schema import (
 )
 from app.services import state as sm
 from app.services import task as tm
+from app.services.affiliate import SUPPORTED_NETWORKS, resolve_product
+from app.services.usage import usage_tracker
 from app.utils import file_security, utils
 
-# 认证依赖项
-# router = new_router(dependencies=[Depends(base.verify_token)])
-router = new_router()
-
-_enable_redis = config.app.get("enable_redis", False)
-_redis_host = config.app.get("redis_host", "localhost")
-_redis_port = config.app.get("redis_port", 6379)
-_redis_db = config.app.get("redis_db", 0)
-_redis_password = config.app.get("redis_password", None)
-_max_concurrent_tasks = config.app.get("max_concurrent_tasks", 5)
-_max_queued_tasks = config.app.get("max_queued_tasks", 100)
-
-redis_url = f"redis://:{_redis_password}@{_redis_host}:{_redis_port}/{_redis_db}"
-# 根据配置选择合适的任务管理器
-if _enable_redis:
-    task_manager = RedisTaskManager(
-        max_concurrent_tasks=_max_concurrent_tasks,
-        redis_url=redis_url,
-        max_queued_tasks=_max_queued_tasks,
-    )
-else:
-    task_manager = InMemoryTaskManager(
-        max_concurrent_tasks=_max_concurrent_tasks,
-        max_queued_tasks=_max_queued_tasks,
-    )
+router = new_router(dependencies=[Depends(base.verify_token)])
 
 
 def _sanitize_upload_filename(filename: str, request_id: str) -> str:
@@ -140,6 +117,17 @@ def create_task(
 ):
     task_id = utils.get_uuid()
     request_id = base.get_task_id(request)
+
+    # Quota check — only enforced when api_key_quotas is configured
+    quotas = config._cfg.get("api_key_quotas", {})
+    if quotas:
+        api_key = base.get_api_key(request) or ""
+        allowed, reason = usage_tracker.check_and_increment(api_key)
+        if not allowed:
+            raise HttpException(
+                task_id=task_id, status_code=429, message=f"{request_id}: {reason}"
+            )
+
     try:
         task = {
             "task_id": task_id,
@@ -164,6 +152,130 @@ def create_task(
         )
 
 from fastapi import Query
+
+
+@router.get("/usage", summary="Get today's video generation counts per API key")
+def get_usage(request: Request):
+    request_id = base.get_task_id(request)
+    api_key = base.get_api_key(request)
+    quotas = config._cfg.get("api_key_quotas", {})
+    if api_key and quotas:
+        # return only this key's usage to the caller
+        used = usage_tracker.get_usage(api_key)
+        quota = int(quotas.get(api_key, 0))
+        data = {"api_key_suffix": api_key[-6:], "used_today": used, "daily_quota": quota}
+    else:
+        # no quota config — return aggregate view for all tracked keys
+        data = {"usage_today": usage_tracker.get_all_usage()}
+    return utils.get_response(200, data)
+
+
+from pydantic import BaseModel as _BaseModel
+
+
+class ProductResolveRequest(_BaseModel):
+    network: str = "amazon"
+    product_id: str
+    affiliate_tag: str = ""
+    # manual-mode fields
+    title: str = ""
+    description: str = ""
+    price: str = ""
+    category: str = ""
+
+
+class ProductVideoRequest(TaskVideoRequest):
+    network: str = "amazon"
+    product_id: str = ""
+    affiliate_tag: str = ""
+
+
+@router.post(
+    "/products/resolve",
+    summary="Resolve a product ID to affiliate metadata",
+)
+def resolve_product_info(request: Request, body: ProductResolveRequest):
+    request_id = base.get_task_id(request)
+    if body.network not in SUPPORTED_NETWORKS:
+        raise HttpException(
+            task_id=request_id,
+            status_code=400,
+            message=f"unsupported network '{body.network}'. choose from: {SUPPORTED_NETWORKS}",
+        )
+    try:
+        info = resolve_product(
+            network=body.network,
+            product_id=body.product_id,
+            affiliate_tag=body.affiliate_tag,
+            title=body.title,
+            description=body.description,
+            price=body.price,
+            category=body.category,
+        )
+        return utils.get_response(200, {
+            "title": info.title,
+            "description": info.description,
+            "price": info.price,
+            "category": info.category,
+            "brand": info.brand,
+            "affiliate_url": info.affiliate_url,
+            "network": info.network,
+            "product_id": info.product_id,
+        })
+    except Exception as e:
+        raise HttpException(task_id=request_id, status_code=400, message=str(e))
+
+
+@router.post(
+    "/products/video",
+    response_model=TaskResponse,
+    summary="Generate an affiliate product video",
+)
+def create_product_video(request: Request, body: ProductVideoRequest):
+    """
+    Resolve product metadata, generate a review script, and kick off the
+    full video pipeline. The affiliate URL is injected into the cross-post
+    caption automatically.
+    """
+    request_id = base.get_task_id(request)
+
+    # resolve product first
+    try:
+        info = resolve_product(
+            network=body.network or "manual",
+            product_id=body.product_id or body.video_subject,
+            affiliate_tag=body.affiliate_tag,
+        )
+    except Exception as e:
+        # if resolution fails, fall back to whatever the caller provided
+        logger.warning(f"product resolve failed, using manual data: {e}")
+        from app.services.affiliate import ProductInfo
+        info = ProductInfo(
+            title=body.video_subject,
+            affiliate_url=body.affiliate_url or "",
+            network="manual",
+        )
+
+    # generate a product-review script if none was provided
+    if not body.video_script and info.title:
+        from app.services.llm import generate_product_script
+        body.video_script = generate_product_script(
+            title=info.title,
+            description=info.description,
+            price=info.price,
+            category=info.category,
+            brand=info.brand,
+            language=body.video_language or "",
+            paragraph_number=body.paragraph_number or 1,
+        )
+
+    # populate affiliate fields
+    body.video_subject = body.video_subject or info.title
+    body.affiliate_url = info.affiliate_url
+    body.affiliate_network = info.network
+
+    return create_task(request, body, stop_at="video")
+
 
 @router.get("/tasks", response_model=TaskQueryResponse, summary="Get all tasks")
 def get_all_tasks(request: Request, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1)):
