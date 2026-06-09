@@ -32,6 +32,8 @@ def yt_auth_url():
 
 
 class CodeRequest(BaseModel):
+    """Request body for POST /youtube/auth/code."""
+
     code: str
 
 
@@ -46,6 +48,8 @@ def yt_auth_code(req: CodeRequest):
 
 
 class UploadRequest(BaseModel):
+    """Request body for POST /youtube/upload."""
+
     task_id: str
     filename: str
     title: str

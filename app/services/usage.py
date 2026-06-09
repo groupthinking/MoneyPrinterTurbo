@@ -21,6 +21,7 @@ _lock = threading.Lock()
 
 @contextlib.contextmanager
 def _db():
+    """Context manager that opens a billing-DB connection and closes it on exit."""
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -30,6 +31,7 @@ def _db():
 
 
 def _ensure_table():
+    """Create the usage_counters table if it does not exist."""
     with _db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS usage_counters (
@@ -46,7 +48,10 @@ _ensure_table()
 
 
 class UsageTracker:
+    """Tracks and enforces per-API-key daily video-generation quotas via SQLite."""
+
     def _quotas(self) -> dict:
+        """Return the [api_key_quotas] TOML section as a dict."""
         # [api_key_quotas] is a top-level TOML section, not nested under [app]
         return config._cfg.get("api_key_quotas", {}) or {}
 
@@ -93,6 +98,7 @@ class UsageTracker:
         return True, ""
 
     def _persist_increment(self, api_key: str):
+        """Atomically increment today's counter for api_key in SQLite (unlimited keys)."""
         today = str(date.today())
         with _lock, _db() as conn:
             conn.execute(
@@ -113,6 +119,7 @@ class UsageTracker:
             conn.commit()
 
     def get_usage(self, api_key: str) -> int:
+        """Return today's generation count for api_key (0 if no activity)."""
         today = str(date.today())
         with _db() as conn:
             row = conn.execute(
@@ -122,6 +129,7 @@ class UsageTracker:
         return row["count"] if row else 0
 
     def get_all_usage(self) -> dict[str, int]:
+        """Return today's generation counts for all API keys as {key: count}."""
         today = str(date.today())
         with _db() as conn:
             rows = conn.execute(

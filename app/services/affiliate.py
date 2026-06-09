@@ -34,6 +34,8 @@ from app.config import config
 
 @dataclass
 class ProductInfo:
+    """Normalized product metadata returned by any affiliate-network resolver."""
+
     title: str
     affiliate_url: str
     network: str = "manual"
@@ -50,10 +52,12 @@ class ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _amz_sign(key: bytes, msg: str) -> bytes:
+    """Return HMAC-SHA256(key, msg) as raw bytes."""
     return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
 
 def _amz_signature_key(secret: str, date_stamp: str, region: str, service: str) -> bytes:
+    """Derive the Amazon SigV4 signing key from the secret and request scope."""
     k = _amz_sign(("AWS4" + secret).encode("utf-8"), date_stamp)
     k = _amz_sign(k, region)
     k = _amz_sign(k, service)
@@ -62,6 +66,7 @@ def _amz_signature_key(secret: str, date_stamp: str, region: str, service: str) 
 
 def _amz_request(access_key: str, secret_key: str, partner_tag: str,
                  region: str, host: str, payload: dict) -> dict:
+    """Make a SigV4-signed POST to the Amazon PA API and return the JSON response."""
     service = "ProductAdvertisingAPI"
     path = "/paapi5/getitems"
     method = "POST"
@@ -118,6 +123,7 @@ def _amz_request(access_key: str, secret_key: str, partner_tag: str,
 
 
 def _resolve_amazon(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via Amazon PA API 5.0; accepts ASIN or full Amazon URL."""
     access_key = config.app.get("amazon_access_key", "")
     secret_key = config.app.get("amazon_secret_key", "")
     partner_tag = affiliate_tag or config.app.get("amazon_partner_tag", "")
@@ -210,6 +216,7 @@ def _resolve_clickbank(product_id: str, affiliate_tag: str) -> ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via the CJ Affiliate Product Search API."""
     api_key = config.app.get("cj_api_key", "")
     website_id = affiliate_tag or config.app.get("cj_website_id", "")
     if not api_key or not website_id:
@@ -264,6 +271,7 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _resolve_awin(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via the Awin Product Feed API."""
     api_key = config.app.get("awin_api_key", "")
     publisher_id = affiliate_tag or config.app.get("awin_publisher_id", "")
     if not api_key or not publisher_id:
@@ -303,6 +311,7 @@ def _resolve_manual(product_id: str, affiliate_tag: str,
                     title: str = "", description: str = "",
                     price: str = "", category: str = "",
                     affiliate_url: str = "") -> ProductInfo:
+    """Construct a ProductInfo directly from caller-supplied fields."""
     resolved_url = affiliate_url or (
         product_id if product_id.startswith("http") else affiliate_tag
     )

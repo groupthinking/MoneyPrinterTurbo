@@ -22,6 +22,7 @@ _lock = threading.Lock()
 
 @contextlib.contextmanager
 def _db():
+    """Context manager that opens a billing-DB connection and closes it on exit."""
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -31,6 +32,7 @@ def _db():
 
 
 def _init_db():
+    """Create the api_keys table if it does not exist."""
     with _db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -56,6 +58,7 @@ def issue_key(
     stripe_subscription_id: str = "",
     customer_email: str = "",
 ) -> str:
+    """Generate, persist, and return a new API key for the given tier."""
     if tier not in TIERS:
         raise ValueError(f"Unknown tier: {tier}")
     key = "mpt_" + secrets.token_urlsafe(32)
@@ -97,6 +100,7 @@ def get_key_by_subscription(stripe_subscription_id: str) -> str | None:
 
 
 def deactivate_by_subscription(stripe_subscription_id: str):
+    """Mark all active keys for a Stripe subscription as inactive."""
     if not stripe_subscription_id:
         logger.warning("deactivate_by_subscription called with empty ID — skipping")
         return

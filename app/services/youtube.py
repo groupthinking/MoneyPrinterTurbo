@@ -28,6 +28,7 @@ _LOOPBACK_REDIRECT = "http://localhost"
 
 
 def _client_config() -> dict:
+    """Build and return the OAuth2 installed-app client config dict."""
     client_id = config.app.get("youtube_client_id", "")
     client_secret = config.app.get("youtube_client_secret", "")
     if not client_id or not client_secret:
@@ -74,6 +75,7 @@ def _load_credentials():
 
 
 def _build_service():
+    """Load credentials and return an authenticated YouTube Data API v3 service client."""
     from googleapiclient.discovery import build
 
     creds = _load_credentials()

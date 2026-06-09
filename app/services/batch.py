@@ -31,6 +31,7 @@ _lock = threading.Lock()
 
 @contextlib.contextmanager
 def _db():
+    """Context manager that opens a batch-DB connection and closes it on exit."""
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -40,6 +41,7 @@ def _db():
 
 
 def _init_db():
+    """Create the batches, batch_tasks, and scheduled_jobs tables if they do not exist."""
     with _db() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS batches (
@@ -84,6 +86,7 @@ _init_db()
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
+    """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -153,6 +156,7 @@ def create_batch(
 
 
 def get_batch_status(batch_id: str) -> dict | None:
+    """Return status and per-task details for batch_id, or None if not found."""
     from app.services import state as sm
     from app.utils.utils import get_response
     from app.config.config import const
@@ -198,6 +202,7 @@ def get_batch_status(batch_id: str) -> dict | None:
 
 
 def list_batches(api_key: str = "", limit: int = 20) -> list[dict]:
+    """Return the most recent batches, optionally scoped to a single API key."""
     with _db() as conn:
         if api_key:
             rows = conn.execute(
@@ -222,6 +227,7 @@ def add_scheduled_job(
     api_key: str = "",
     name: str = "",
 ) -> str:
+    """Persist a recurring job and return its job_id. Raises ValueError for invalid intervals."""
     if not math.isfinite(interval_hours) or interval_hours <= 0:
         raise ValueError("interval_hours must be a finite positive number")
     job_id = utils.get_uuid()
@@ -242,6 +248,7 @@ def add_scheduled_job(
 
 
 def remove_scheduled_job(job_id: str) -> bool:
+    """Deactivate a scheduled job. Returns True if a row was updated, False if not found."""
     with _lock, _db() as conn:
         cur = conn.execute("UPDATE scheduled_jobs SET active = 0 WHERE id = ?", (job_id,))
         conn.commit()
@@ -249,6 +256,7 @@ def remove_scheduled_job(job_id: str) -> bool:
 
 
 def list_scheduled_jobs(api_key: str = "") -> list[dict]:
+    """Return active scheduled jobs, optionally filtered by API key."""
     with _db() as conn:
         if api_key:
             rows = conn.execute(
@@ -267,6 +275,7 @@ def list_scheduled_jobs(api_key: str = "") -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _run_due_jobs():
+    """Atomically claim and fire all scheduled jobs whose next_run_at is in the past."""
     now_iso = _now_iso()
     claimed = []
 
@@ -307,6 +316,7 @@ def _run_due_jobs():
 
 
 def _scheduler_loop():
+    """Background thread that checks for due scheduled jobs every 60 seconds."""
     logger.info("Batch scheduler started")
     while True:
         try:

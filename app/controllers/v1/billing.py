@@ -17,18 +17,22 @@ router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
 def _require_stripe() -> None:
+    """Raise HTTP 503 if Stripe is not configured, otherwise set the API key."""
     if not config.app.get("stripe_secret_key", ""):
         raise HTTPException(status_code=503, detail="Stripe not configured — set stripe_secret_key in config.toml")
     stripe.api_key = config.app["stripe_secret_key"]
 
 
 def _validate_redirect_url(url: str) -> None:
+    """Raise HTTP 400 if url is not an absolute http/https URL."""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HTTPException(status_code=400, detail="Invalid redirect URL — must be absolute http/https")
 
 
 class CheckoutRequest(BaseModel):
+    """Request body for POST /billing/checkout."""
+
     tier: str
     success_url: str
     cancel_url: str

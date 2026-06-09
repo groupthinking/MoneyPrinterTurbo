@@ -8,6 +8,7 @@ from app.models.exception import HttpException
 
 
 def get_task_id(request: Request):
+    """Return the X-Task-Id header value, or a fresh UUID if absent."""
     task_id = request.headers.get("x-task-id")
     if not task_id:
         task_id = uuid4()
@@ -15,11 +16,18 @@ def get_task_id(request: Request):
 
 
 def get_api_key(request: Request):
+    """Return the X-Api-Key header value, or None if not present."""
     api_key = request.headers.get("x-api-key")
     return api_key
 
 
 def verify_token(request: Request):
+    """FastAPI dependency that enforces API-key authentication.
+
+    Passes when: the key is a valid billing-DB key, the global api_key
+    matches, the key appears in api_key_quotas, or auth is disabled
+    (no api_key and no quotas configured).  Raises HTTP 401 otherwise.
+    """
     token = get_api_key(request)
 
     # Billing DB keys are always valid regardless of other config
