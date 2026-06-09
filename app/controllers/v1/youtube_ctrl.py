@@ -42,7 +42,7 @@ def yt_auth_code(req: CodeRequest):
     """Exchange an OAuth authorisation code for a persistent token."""
     try:
         yt_svc.exchange_code(req.code)
-    except Exception as e:
+    except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"status": "authorised"}
 

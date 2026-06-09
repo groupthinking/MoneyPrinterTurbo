@@ -118,14 +118,18 @@ def exchange_code(code: str) -> None:
 
 
 def _truncate_tags(tags: list[str], max_chars: int = 500) -> list[str]:
-    """Return tags truncated so total character length stays within max_chars."""
+    """Return tags truncated so total character length stays within max_chars.
+
+    YouTube counts comma separators between tags toward the 500-character limit.
+    """
     result: list[str] = []
     total = 0
     for tag in tags:
-        if total + len(tag) > max_chars:
+        separator_len = 1 if result else 0  # comma between tags counts toward limit
+        if total + separator_len + len(tag) > max_chars:
             break
         result.append(tag)
-        total += len(tag)
+        total += separator_len + len(tag)
     return result
 
 

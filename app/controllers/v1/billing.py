@@ -75,6 +75,8 @@ async def stripe_webhook(
     payload = await request.body()
     try:
         event = stripe.Webhook.construct_event(payload, stripe_signature, secret)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Stripe payload")
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
@@ -93,7 +95,12 @@ async def stripe_webhook(
         else:
             key = issue_key(tier, customer_id, subscription_id, customer_email)
             # TODO: email the key to customer_email via your transactional mailer
-            logger.info(f"New {tier} key issued — …{key[-8:]} → {customer_email}")
+            masked_email = (
+                f"{customer_email[:2]}***@***"
+                if customer_email and "@" in customer_email
+                else "redacted"
+            )
+            logger.info(f"New {tier} key issued — …{key[-8:]} → {masked_email}")
 
     elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
         sub = event["data"]["object"]

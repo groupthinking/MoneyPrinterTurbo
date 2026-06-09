@@ -32,7 +32,7 @@ def _db():
 
 
 def _init_db():
-    """Create the api_keys table if it does not exist."""
+    """Create the api_keys table and uniqueness index if they do not exist."""
     with _db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -45,6 +45,13 @@ def _init_db():
                 created_at            TEXT NOT NULL,
                 active                INTEGER NOT NULL DEFAULT 1
             )
+        """)
+        # Prevent concurrent webhook replays from issuing duplicate active keys
+        # for the same Stripe subscription.
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_api_keys_active_subscription
+            ON api_keys(stripe_subscription_id)
+            WHERE stripe_subscription_id <> '' AND active = 1
         """)
         conn.commit()
 
@@ -64,15 +71,28 @@ def issue_key(
     key = "mpt_" + secrets.token_urlsafe(32)
     quota = TIERS[tier]
     with _lock, _db() as conn:
-        conn.execute(
-            """INSERT INTO api_keys
-               (key, tier, daily_quota, stripe_customer_id, stripe_subscription_id,
-                customer_email, created_at, active)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-            (key, tier, quota, stripe_customer_id, stripe_subscription_id,
-             customer_email, datetime.now(timezone.utc).isoformat()),
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                """INSERT INTO api_keys
+                   (key, tier, daily_quota, stripe_customer_id, stripe_subscription_id,
+                    customer_email, created_at, active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                (key, tier, quota, stripe_customer_id, stripe_subscription_id,
+                 customer_email, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            # Idempotent replay: a concurrent request already issued a key for
+            # this subscription — return the existing one.
+            if stripe_subscription_id:
+                row = conn.execute(
+                    "SELECT key FROM api_keys WHERE stripe_subscription_id = ? AND active = 1",
+                    (stripe_subscription_id,),
+                ).fetchone()
+                if row:
+                    logger.info(f"Idempotent replay — returning existing key for sub {stripe_subscription_id}")
+                    return row["key"]
+            raise
     actor = f"cust …{stripe_customer_id[-8:]}" if stripe_customer_id else "anon"
     logger.info(f"Issued {tier} key …{key[-8:]} for {actor}")
     return key
