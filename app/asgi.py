@@ -80,3 +80,5 @@ def shutdown_event():
 @app.on_event("startup")
 def startup_event():
     logger.info("startup event")
+    from app.services.batch import init_scheduler
+    init_scheduler()

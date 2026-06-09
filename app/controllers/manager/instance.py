@@ -12,7 +12,10 @@ if _enable_redis:
     _redis_port = config.app.get("redis_port", 6379)
     _redis_db = config.app.get("redis_db", 0)
     _redis_password = config.app.get("redis_password", None)
-    _redis_url = f"redis://:{_redis_password}@{_redis_host}:{_redis_port}/{_redis_db}"
+    if _redis_password:
+        _redis_url = f"redis://:{_redis_password}@{_redis_host}:{_redis_port}/{_redis_db}"
+    else:
+        _redis_url = f"redis://{_redis_host}:{_redis_port}/{_redis_db}"
     task_manager = RedisTaskManager(
         max_concurrent_tasks=_max_concurrent,
         redis_url=_redis_url,

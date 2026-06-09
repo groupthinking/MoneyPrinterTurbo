@@ -1,24 +1,56 @@
-"""Per-API-key usage tracking and daily quota enforcement."""
+"""Per-API-key usage tracking and daily quota enforcement.
+
+Counters are persisted to the billing SQLite DB so they survive restarts
+and memory doesn't grow unboundedly. For true multi-process deployments
+(multiple Uvicorn workers) use Redis — single-worker is the common case.
+"""
+import contextlib
+import sqlite3
 import threading
 from datetime import date
+from pathlib import Path
 
 from loguru import logger
 
 from app.config import config
 
+_DB_PATH = Path("storage/billing.db")
+_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _db():
+    conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _ensure_table():
+    with _db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS usage_counters (
+                api_key   TEXT NOT NULL,
+                day       TEXT NOT NULL,
+                count     INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (api_key, day)
+            )
+        """)
+        conn.commit()
+
+
+_ensure_table()
+
 
 class UsageTracker:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._counters: dict[str, dict[str, int]] = {}
-
     def _quotas(self) -> dict:
         # [api_key_quotas] is a top-level TOML section, not nested under [app]
         return config._cfg.get("api_key_quotas", {}) or {}
 
     def _get_quota(self, api_key: str) -> int:
         """Return daily video quota for a key. -1 = unlimited, 0 = blocked/unknown."""
-        # SQLite billing keys take precedence over config
         try:
             from app.services.billing import get_key_info
             info = get_key_info(api_key)
@@ -32,46 +64,58 @@ class UsageTracker:
         return int(quotas.get(api_key, 0))
 
     def check_and_increment(self, api_key: str) -> tuple[bool, str]:
-        """
-        Check quota and increment counter atomically.
-        Returns (allowed, reason). If allowed=False, reason explains why.
-        """
+        """Check quota and increment counter atomically."""
         quota = self._get_quota(api_key)
         if quota == 0:
             return False, "API key not authorised or quota not configured"
         if quota == -1:
-            self._increment(api_key)
+            self._persist_increment(api_key)
             return True, ""
 
         today = str(date.today())
-        with self._lock:
-            key_counters = self._counters.setdefault(api_key, {})
-            # prune stale dates to keep memory bounded
-            for old_date in list(key_counters.keys()):
-                if old_date != today:
-                    del key_counters[old_date]
-            current = key_counters.get(today, 0)
+        with _lock, _db() as conn:
+            row = conn.execute(
+                "SELECT count FROM usage_counters WHERE api_key = ? AND day = ?",
+                (api_key, today),
+            ).fetchone()
+            current = row["count"] if row else 0
             if current >= quota:
                 logger.warning(f"quota exceeded for key …{api_key[-6:]}: {current}/{quota}")
                 return False, f"daily quota of {quota} videos exceeded"
-            key_counters[today] = current + 1
-            return True, ""
+            conn.execute(
+                """INSERT INTO usage_counters (api_key, day, count) VALUES (?, ?, 1)
+                   ON CONFLICT(api_key, day) DO UPDATE SET count = count + 1""",
+                (api_key, today),
+            )
+            conn.commit()
+        return True, ""
 
-    def _increment(self, api_key: str):
+    def _persist_increment(self, api_key: str):
         today = str(date.today())
-        with self._lock:
-            key_counters = self._counters.setdefault(api_key, {})
-            key_counters[today] = key_counters.get(today, 0) + 1
+        with _lock, _db() as conn:
+            conn.execute(
+                """INSERT INTO usage_counters (api_key, day, count) VALUES (?, ?, 1)
+                   ON CONFLICT(api_key, day) DO UPDATE SET count = count + 1""",
+                (api_key, today),
+            )
+            conn.commit()
 
     def get_usage(self, api_key: str) -> int:
         today = str(date.today())
-        with self._lock:
-            return self._counters.get(api_key, {}).get(today, 0)
+        with _db() as conn:
+            row = conn.execute(
+                "SELECT count FROM usage_counters WHERE api_key = ? AND day = ?",
+                (api_key, today),
+            ).fetchone()
+        return row["count"] if row else 0
 
     def get_all_usage(self) -> dict[str, int]:
         today = str(date.today())
-        with self._lock:
-            return {k: v.get(today, 0) for k, v in self._counters.items()}
+        with _db() as conn:
+            rows = conn.execute(
+                "SELECT api_key, count FROM usage_counters WHERE day = ?", (today,)
+            ).fetchall()
+        return {r["api_key"]: r["count"] for r in rows}
 
 
 usage_tracker = UsageTracker()

@@ -319,14 +319,14 @@ if not config.app.get("hide_config", False):
             if llm_provider == "oneapi":
                 if not llm_model_name:
                     llm_model_name = (
-                        "claude-opus-4-8"  # 默认模型，可以根据需要调整
+                        "claude-3-5-sonnet-20240620"  # 默认模型，可以根据需要调整
                     )
                 with llm_helper:
                     tips = """
                         ##### OneAPI 配置说明
                         - **API Key**: 填写您的 OneAPI 密钥
                         - **Base Url**: 填写 OneAPI 的基础 URL
-                        - **Model Name**: 填写您要使用的模型名称，例如 claude-opus-4-8
+                        - **Model Name**: 填写您要使用的模型名称，例如 claude-3-5-sonnet-20240620
                         """
 
             if llm_provider == "qwen":
@@ -561,6 +561,39 @@ if not config.app.get("hide_config", False):
                 value=config.app.get("upload_post_auto_upload", False),
             )
             config.app["upload_post_auto_upload"] = upload_post_auto
+
+            st.write(tr("YouTube Settings"))
+
+            from app.services import youtube as _yt_svc
+            _yt_authorised = _yt_svc.is_authorised()
+            if _yt_authorised:
+                st.success(tr("YouTube Authorised"))
+            else:
+                st.warning(tr("YouTube Not Authorised"))
+                if st.button(tr("Get YouTube Auth URL"), key="yt_auth_btn"):
+                    try:
+                        _yt_url = _yt_svc.get_auth_url()
+                        st.code(_yt_url)
+                        st.info(tr("Visit the URL, approve, then run authorize_youtube.py"))
+                    except RuntimeError as _e:
+                        st.error(str(_e))
+
+            _yt_privacy_opts = ["public", "unlisted", "private"]
+            _yt_privacy_saved = config.app.get("youtube_default_privacy", "public")
+            _yt_privacy_idx = _yt_privacy_opts.index(_yt_privacy_saved) if _yt_privacy_saved in _yt_privacy_opts else 0
+            _yt_privacy = st.selectbox(
+                tr("YouTube Privacy"),
+                options=_yt_privacy_opts,
+                index=_yt_privacy_idx,
+                key="yt_privacy",
+            )
+            config.app["youtube_default_privacy"] = _yt_privacy
+
+            _yt_auto = st.checkbox(
+                tr("Auto Upload to YouTube"),
+                value=config.app.get("youtube_auto_upload", False),
+            )
+            config.app["youtube_auto_upload"] = _yt_auto
 
 llm_provider = config.app.get("llm_provider", "").lower()
 

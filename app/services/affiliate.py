@@ -148,7 +148,7 @@ def _resolve_amazon(product_id: str, affiliate_tag: str) -> ProductInfo:
     }
 
     data = _amz_request(access_key, secret_key, partner_tag, region, host, payload)
-    items = data.get("ItemsResult", {}).get("Items", [])
+    items = (data.get("ItemsResult") or {}).get("Items", [])
     if not items:
         raise ValueError(f"Amazon returned no results for ASIN {asin}")
 
@@ -228,17 +228,22 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
     )
     resp.raise_for_status()
 
-    # CJ returns XML; parse the first product naively
-    text = resp.text
-    def _extract(tag: str) -> str:
-        m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
-        return m.group(1).strip() if m else ""
+    # CJ returns XML; parse safely with ElementTree
+    import xml.etree.ElementTree as _ET
+    def _extract(root, tag: str) -> str:
+        elem = root.find(f".//{tag}")
+        return (elem.text or "").strip() if elem is not None else ""
 
-    title = _extract("name")
-    description = _extract("description")
-    price = _extract("sale-price") or _extract("price")
-    buy_url = _extract("buy-url")
-    category = _extract("category")
+    try:
+        root = _ET.fromstring(resp.text)
+    except _ET.ParseError as exc:
+        raise ValueError(f"CJ returned unparseable XML: {exc}")
+
+    title = _extract(root, "name")
+    description = _extract(root, "description")
+    price = _extract(root, "sale-price") or _extract(root, "price")
+    buy_url = _extract(root, "buy-url")
+    category = _extract(root, "category")
 
     if not title:
         raise ValueError(f"CJ returned no results for '{product_id}'")

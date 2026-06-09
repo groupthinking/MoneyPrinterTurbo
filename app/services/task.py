@@ -372,6 +372,30 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
             else:
                 logger.warning(f"⚠️ Failed to cross-post: {video_path} - {result.get('error', 'Unknown error')}")
 
+    # 8. Upload to YouTube (if authorised and enabled)
+    youtube_results = []
+    if config.app.get("youtube_auto_upload", False):
+        from app.services import youtube as yt_svc
+        if yt_svc.is_authorised():
+            logger.info("\n\n## uploading videos to YouTube")
+            affiliate_url = getattr(params, "affiliate_url", "") or ""
+            description = params.video_script or params.video_subject or ""
+            if affiliate_url:
+                description = f"{description}\n\n{affiliate_url}".strip()
+            for video_path in final_video_paths:
+                try:
+                    yt_result = yt_svc.upload_video(
+                        video_path=video_path,
+                        title=(params.video_subject or "")[:100] or "New Video",
+                        description=description,
+                        tags=["shorts", "viral"],
+                    )
+                    youtube_results.append({"success": True, **yt_result})
+                    logger.info(f"✅ YouTube upload: {yt_result['url']}")
+                except Exception as exc:
+                    logger.warning(f"⚠️ YouTube upload failed: {exc}")
+                    youtube_results.append({"success": False, "error": str(exc)})
+
     kwargs = {
         "videos": final_video_paths,
         "combined_videos": combined_video_paths,
@@ -382,6 +406,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         "subtitle_path": subtitle_path,
         "materials": downloaded_videos,
         "cross_post_results": cross_post_results if cross_post_results else None,
+        "youtube_results": youtube_results if youtube_results else None,
     }
     sm.state.update_task(
         task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs

@@ -1,4 +1,5 @@
 """Stripe billing — API key issuance, SQLite key store, tier definitions."""
+import contextlib
 import secrets
 import sqlite3
 import threading
@@ -19,10 +20,14 @@ TIERS: dict[str, int] = {
 _lock = threading.Lock()
 
 
-def _db() -> sqlite3.Connection:
+@contextlib.contextmanager
+def _db():
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _init_db():

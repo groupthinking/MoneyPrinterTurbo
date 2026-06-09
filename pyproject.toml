@@ -32,6 +32,8 @@ dependencies = [
     "pydub==0.25.1",
     "litellm==1.60.0",
     "stripe>=9.0.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-auth-httplib2>=0.3.1",
 ]
 
 [project.optional-dependencies]

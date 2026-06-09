@@ -6,6 +6,7 @@ Batch: submit a list of topics and get a batch_id. Tasks are queued
 Schedule: recurring jobs stored in SQLite; a background thread fires
           them at the requested interval.
 """
+import contextlib
 import json
 import sqlite3
 import threading
@@ -27,10 +28,14 @@ _lock = threading.Lock()
 # DB helpers
 # ---------------------------------------------------------------------------
 
-def _db() -> sqlite3.Connection:
+@contextlib.contextmanager
+def _db():
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _init_db():
@@ -278,5 +283,14 @@ def _scheduler_loop():
         time.sleep(60)
 
 
-_scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True, name="batch-scheduler")
-_scheduler_thread.start()
+_scheduler_thread: threading.Thread | None = None
+
+
+def init_scheduler() -> None:
+    """Start the background scheduler. Called once from the ASGI startup event."""
+    global _scheduler_thread
+    if _scheduler_thread and _scheduler_thread.is_alive():
+        return
+    _scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True, name="batch-scheduler")
+    _scheduler_thread.start()
+    logger.info("Batch scheduler started")
