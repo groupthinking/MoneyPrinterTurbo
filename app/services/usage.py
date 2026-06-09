@@ -15,6 +15,7 @@ from loguru import logger
 from app.config import config
 
 _DB_PATH = Path("storage/billing.db")
+_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 _lock = threading.Lock()
 
 
@@ -56,8 +57,9 @@ class UsageTracker:
             info = get_key_info(api_key)
             if info is not None:
                 return info["daily_quota"]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"billing key lookup failed for …{api_key[-6:]}: {exc}")
+            return 0  # fail-closed: blocked when billing is unreachable
         quotas = self._quotas()
         if not quotas:
             return -1
@@ -96,6 +98,16 @@ class UsageTracker:
             conn.execute(
                 """INSERT INTO usage_counters (api_key, day, count) VALUES (?, ?, 1)
                    ON CONFLICT(api_key, day) DO UPDATE SET count = count + 1""",
+                (api_key, today),
+            )
+            conn.commit()
+
+    def decrement(self, api_key: str) -> None:
+        """Roll back a quota unit (used when task creation fails after increment)."""
+        today = str(date.today())
+        with _lock, _db() as conn:
+            conn.execute(
+                "UPDATE usage_counters SET count = MAX(0, count - 1) WHERE api_key = ? AND day = ?",
                 (api_key, today),
             )
             conn.commit()

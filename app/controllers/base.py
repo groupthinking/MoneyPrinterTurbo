@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from fastapi import Request
+from loguru import logger
 
 from app.config import config
 from app.models.exception import HttpException
@@ -27,17 +28,16 @@ def verify_token(request: Request):
             from app.services.billing import get_key_info
             if get_key_info(token):
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"billing key lookup failed: {exc}")
 
     configured_key = config.app.get("api_key", "")
-    if not configured_key:
+    quotas = config._cfg.get("api_key_quotas", {})
+    if not configured_key and not quotas:
         # auth disabled — open access (default, backward-compatible)
         return
     if token == configured_key:
         return
-    # also accept per-key quotas table
-    quotas = config._cfg.get("api_key_quotas", {})
     if quotas and token in quotas:
         return
 

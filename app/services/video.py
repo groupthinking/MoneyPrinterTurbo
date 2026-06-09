@@ -22,6 +22,7 @@ from moviepy import (
 from moviepy.video.tools.subtitles import SubtitlesClip
 from PIL import Image, ImageFont
 
+from app.config import config
 from app.models import const
 from app.models.schema import (
     MaterialInfo,
@@ -525,14 +526,13 @@ def generate_video(
     # write into the same directory as the output file
     output_dir = os.path.dirname(output_file)
 
-    font_path = ""
-    if params.subtitle_enabled:
-        if not params.font_name:
-            params.font_name = "STHeitiMedium.ttc"
-        font_path = os.path.join(utils.font_dir(), params.font_name)
-        if os.name == "nt":
-            font_path = font_path.replace("\\", "/")
+    if not params.font_name:
+        params.font_name = "STHeitiMedium.ttc"
+    font_path = os.path.join(utils.font_dir(), params.font_name)
+    if os.name == "nt":
+        font_path = font_path.replace("\\", "/")
 
+    if params.subtitle_enabled:
         logger.info(f"  ⑤ font: {font_path}")
 
     def resolve_subtitle_background_color():

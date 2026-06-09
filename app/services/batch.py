@@ -99,14 +99,17 @@ def create_batch(
     from app.services import task as tm
     from app.models.schema import VideoParams
 
+    from app.services.usage import usage_tracker
+
     batch_id = utils.get_uuid()
     task_ids = []
     created_at = _now_iso()
 
     with _lock, _db() as conn:
+        # Insert with placeholder total; update after we know accepted count
         conn.execute(
             "INSERT INTO batches (id, name, api_key, total, created_at, params_json) VALUES (?,?,?,?,?,?)",
-            (batch_id, name, api_key, len(topics), created_at, json.dumps(params_dict)),
+            (batch_id, name, api_key, 0, created_at, json.dumps(params_dict)),
         )
         for topic in topics:
             task_id = utils.get_uuid()
@@ -117,6 +120,12 @@ def create_batch(
             except Exception as exc:
                 logger.warning(f"batch {batch_id}: invalid params for topic '{topic}': {exc}")
                 continue
+            # Quota check per topic when api_key is present
+            if api_key:
+                allowed, reason = usage_tracker.check_and_increment(api_key)
+                if not allowed:
+                    logger.warning(f"batch {batch_id}: quota exceeded for topic '{topic}': {reason}")
+                    continue
             sm.state.update_task(task_id)
             try:
                 task_manager.add_task(tm.start, task_id=task_id, params=body, stop_at="video")
@@ -128,7 +137,10 @@ def create_batch(
                 logger.info(f"batch {batch_id}: queued task {task_id} for topic '{topic}'")
             except TaskQueueFullError:
                 sm.state.delete_task(task_id)
+                if api_key:
+                    usage_tracker.decrement(api_key)
                 logger.warning(f"batch {batch_id}: queue full, skipped topic '{topic}'")
+        conn.execute("UPDATE batches SET total = ? WHERE id = ?", (len(task_ids), batch_id))
         conn.commit()
 
     return {"batch_id": batch_id, "task_ids": task_ids, "total": len(task_ids)}
@@ -204,6 +216,8 @@ def add_scheduled_job(
     api_key: str = "",
     name: str = "",
 ) -> str:
+    if interval_hours <= 0:
+        raise ValueError("interval_hours must be greater than 0")
     job_id = utils.get_uuid()
     now = datetime.now(timezone.utc)
     next_run = (now + timedelta(hours=interval_hours)).isoformat()
@@ -248,25 +262,38 @@ def list_scheduled_jobs(api_key: str = "") -> list[dict]:
 
 def _run_due_jobs():
     now_iso = _now_iso()
-    with _db() as conn:
+    claimed = []
+
+    # Atomically claim due jobs by advancing next_run_at before processing.
+    # This prevents double-execution if the scheduler somehow runs concurrently.
+    with _lock, _db() as conn:
         due = conn.execute(
             "SELECT * FROM scheduled_jobs WHERE active = 1 AND next_run_at <= ?",
             (now_iso,),
         ).fetchall()
-    for job in due:
+        for job in due:
+            interval = max(job["interval_hours"], 0.001)
+            next_run = (datetime.now(timezone.utc) + timedelta(hours=interval)).isoformat()
+            cur = conn.execute(
+                "UPDATE scheduled_jobs SET next_run_at = ? "
+                "WHERE id = ? AND next_run_at <= ? AND active = 1",
+                (next_run, job["id"], now_iso),
+            )
+            if cur.rowcount:
+                claimed.append((dict(job), next_run))
+        conn.commit()
+
+    for job, next_run in claimed:
         try:
             topics = json.loads(job["topics_json"])
             params = json.loads(job["params_json"])
             name = f"{job['name']} (run {job['run_count'] + 1})"
             result = create_batch(topics, params, api_key=job["api_key"], name=name)
             logger.info(f"Scheduled job {job['id']} fired — batch {result['batch_id']}")
-            next_run = (
-                datetime.now(timezone.utc) + timedelta(hours=job["interval_hours"])
-            ).isoformat()
             with _lock, _db() as conn:
                 conn.execute(
-                    "UPDATE scheduled_jobs SET next_run_at=?, last_run_at=?, run_count=run_count+1 WHERE id=?",
-                    (next_run, _now_iso(), job["id"]),
+                    "UPDATE scheduled_jobs SET last_run_at=?, run_count=run_count+1 WHERE id=?",
+                    (_now_iso(), job["id"]),
                 )
                 conn.commit()
         except Exception as exc:

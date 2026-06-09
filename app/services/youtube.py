@@ -67,8 +67,15 @@ def _build_service():
 
 
 def is_authorised() -> bool:
-    """Return True if a valid token file exists."""
-    return _TOKEN_PATH.exists()
+    """Return True if a valid, non-expired (or refreshable) token file exists."""
+    if not _TOKEN_PATH.exists():
+        return False
+    try:
+        from google.oauth2.credentials import Credentials
+        creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
+        return creds.valid or bool(creds.refresh_token)
+    except Exception:
+        return False
 
 
 def get_auth_url() -> str:
@@ -88,8 +95,9 @@ def exchange_code(code: str) -> None:
     flow = Flow.from_client_config(_client_config(), scopes=_SCOPES)
     flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
     flow.fetch_token(code=code)
-    _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _TOKEN_PATH.write_text(flow.credentials.to_json())
+    with _token_lock:
+        _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _TOKEN_PATH.write_text(flow.credentials.to_json())
     logger.info(f"YouTube token saved to {_TOKEN_PATH}")
 
 

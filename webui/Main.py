@@ -742,12 +742,17 @@ with _product_tab:
                 log_records.append(msg)
                 st.code("\n".join(log_records))
 
-        logger.add(_aff_log)
+        _aff_log_id = logger.add(_aff_log)
         st.toast(tr("Generating Video"))
         logger.info(tr("Start Generating Video"))
         scroll_to_bottom()
 
-        result = tm.start(task_id=task_id, params=params)
+        try:
+            result = tm.start(task_id=task_id, params=params)
+        finally:
+            logger.remove(_aff_log_id)
+            st.session_state["_product_mode_active"] = False
+
         if not result or "videos" not in result:
             st.error(tr("Video Generation Failed"))
             st.stop()
@@ -759,8 +764,8 @@ with _product_tab:
                 _cols = st.columns(len(video_files) * 2 + 1)
                 for _i, _url in enumerate(video_files):
                     _cols[_i * 2 + 1].video(_url)
-        except Exception:
-            pass
+        except Exception as _preview_exc:
+            logger.warning(f"video preview failed: {_preview_exc}")
 
         if _p_aff_url:
             st.info(f"Affiliate link for caption: {_p_aff_url}")

@@ -120,13 +120,15 @@ def create_task(
 
     # Quota check — only enforced when api_key_quotas is configured
     quotas = config._cfg.get("api_key_quotas", {})
+    api_key = base.get_api_key(request) or ""
+    quota_consumed = False
     if quotas:
-        api_key = base.get_api_key(request) or ""
         allowed, reason = usage_tracker.check_and_increment(api_key)
         if not allowed:
             raise HttpException(
                 task_id=task_id, status_code=429, message=f"{request_id}: {reason}"
             )
+        quota_consumed = True
 
     try:
         task = {
@@ -139,6 +141,8 @@ def create_task(
         logger.success(f"Task created: {utils.to_json(task)}")
         return utils.get_response(200, task)
     except TaskQueueFullError as e:
+        if quota_consumed:
+            usage_tracker.decrement(api_key)
         sm.state.delete_task(task_id)
         logger.warning(
             f"reject task because queue is full, request_id: {request_id}, task_id: {task_id}"
@@ -147,6 +151,8 @@ def create_task(
             task_id=task_id, status_code=429, message=f"{request_id}: {str(e)}"
         )
     except ValueError as e:
+        if quota_consumed:
+            usage_tracker.decrement(api_key)
         raise HttpException(
             task_id=task_id, status_code=400, message=f"{request_id}: {str(e)}"
         )
@@ -156,16 +162,14 @@ from fastapi import Query
 
 @router.get("/usage", summary="Get today's video generation counts per API key")
 def get_usage(request: Request):
-    request_id = base.get_task_id(request)
     api_key = base.get_api_key(request)
-    quotas = config._cfg.get("api_key_quotas", {})
-    if api_key and quotas:
-        # return only this key's usage to the caller
+    if api_key:
+        # Always scope to the caller's key — never expose other keys' data
         used = usage_tracker.get_usage(api_key)
-        quota = int(quotas.get(api_key, 0))
+        quota = usage_tracker._get_quota(api_key)
         data = {"api_key_suffix": api_key[-6:], "used_today": used, "daily_quota": quota}
     else:
-        # no quota config — return aggregate view for all tracked keys
+        # No key presented (open-access mode) — return aggregate
         data = {"usage_today": usage_tracker.get_all_usage()}
     return utils.get_response(200, data)
 

@@ -1,4 +1,6 @@
 """Shared task manager singleton — import this instead of re-creating in each module."""
+from urllib.parse import quote as _url_quote
+
 from app.config import config
 from app.controllers.manager.memory_manager import InMemoryTaskManager
 from app.controllers.manager.redis_manager import RedisTaskManager
@@ -13,7 +15,7 @@ if _enable_redis:
     _redis_db = config.app.get("redis_db", 0)
     _redis_password = config.app.get("redis_password", None)
     if _redis_password:
-        _redis_url = f"redis://:{_redis_password}@{_redis_host}:{_redis_port}/{_redis_db}"
+        _redis_url = f"redis://:{_url_quote(_redis_password, safe='')}@{_redis_host}:{_redis_port}/{_redis_db}"
     else:
         _redis_url = f"redis://{_redis_host}:{_redis_port}/{_redis_db}"
     task_manager = RedisTaskManager(

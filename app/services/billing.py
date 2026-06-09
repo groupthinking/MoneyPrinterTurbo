@@ -83,7 +83,22 @@ def get_key_info(key: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_key_by_subscription(stripe_subscription_id: str) -> str | None:
+    """Return active key for a subscription ID, or None if none exists."""
+    if not stripe_subscription_id:
+        return None
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT key FROM api_keys WHERE stripe_subscription_id = ? AND active = 1",
+            (stripe_subscription_id,),
+        ).fetchone()
+    return row["key"] if row else None
+
+
 def deactivate_by_subscription(stripe_subscription_id: str):
+    if not stripe_subscription_id:
+        logger.warning("deactivate_by_subscription called with empty ID — skipping")
+        return
     with _lock, _db() as conn:
         conn.execute(
             "UPDATE api_keys SET active = 0 WHERE stripe_subscription_id = ?",

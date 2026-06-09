@@ -228,15 +228,21 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
     )
     resp.raise_for_status()
 
-    # CJ returns XML; parse safely with ElementTree
-    import xml.etree.ElementTree as _ET
+    # Use defusedxml to prevent XML bomb / XXE attacks from external API responses
+    try:
+        import defusedxml.ElementTree as _ET
+        _ParseError = Exception
+    except ImportError:
+        import xml.etree.ElementTree as _ET  # type: ignore[no-redef]
+        _ParseError = _ET.ParseError
+
     def _extract(root, tag: str) -> str:
         elem = root.find(f".//{tag}")
         return (elem.text or "").strip() if elem is not None else ""
 
     try:
         root = _ET.fromstring(resp.text)
-    except _ET.ParseError as exc:
+    except Exception as exc:
         raise ValueError(f"CJ returned unparseable XML: {exc}")
 
     title = _extract(root, "name")
@@ -301,10 +307,14 @@ def _resolve_awin(product_id: str, affiliate_tag: str) -> ProductInfo:
 
 def _resolve_manual(product_id: str, affiliate_tag: str,
                     title: str = "", description: str = "",
-                    price: str = "", category: str = "") -> ProductInfo:
+                    price: str = "", category: str = "",
+                    affiliate_url: str = "") -> ProductInfo:
+    resolved_url = affiliate_url or (
+        product_id if product_id.startswith("http") else affiliate_tag
+    )
     return ProductInfo(
         title=title or product_id,
-        affiliate_url=product_id if product_id.startswith("http") else affiliate_tag,
+        affiliate_url=resolved_url,
         network="manual",
         description=description,
         price=price,
@@ -345,8 +355,9 @@ def resolve_product(
             return _resolve_cj(product_id, affiliate_tag)
         if network == "awin":
             return _resolve_awin(product_id, affiliate_tag)
-        # manual / fallback
-        return _resolve_manual(product_id, affiliate_tag, **kwargs)
+        if network == "manual":
+            return _resolve_manual(product_id, affiliate_tag, **kwargs)
+        raise ValueError(f"Unsupported network '{network}'. Choose from: {SUPPORTED_NETWORKS}")
     except Exception as e:
         logger.error(f"affiliate resolver [{network}] failed: {e}")
         raise
