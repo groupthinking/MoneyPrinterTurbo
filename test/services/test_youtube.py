@@ -51,6 +51,19 @@ class TestTruncateTags(unittest.TestCase):
         # max_chars=5: "hello"=5 fits, second needs +6 → dropped
         self.assertEqual(_truncate_tags(["hello", "world"], max_chars=5), ["hello"])
 
+    def test_phrase_tag_overhead(self):
+        # "foo bar" has a space, so it costs len("foo bar") + 2 = 9 chars, not 7.
+        # max_chars=8: bare "foo bar" is 7 chars but with quote overhead is 9 → dropped.
+        self.assertEqual(_truncate_tags(["foo bar"], max_chars=8), [])
+
+    def test_phrase_tag_fits_with_overhead(self):
+        # "ab cd" = 5 chars + 2 quote overhead = 7; fits in max_chars=7
+        self.assertEqual(_truncate_tags(["ab cd"], max_chars=7), ["ab cd"])
+
+    def test_phrase_tag_overhead_counted_in_total(self):
+        # "abc" (3) + "," (1) + "d e" (3 + 2 overhead) = 9 total; max=8 → "d e" dropped
+        self.assertEqual(_truncate_tags(["abc", "d e"], max_chars=8), ["abc"])
+
 
 class TestWriteTokenSecure(unittest.TestCase):
     def test_writes_and_chmods(self):
@@ -342,8 +355,9 @@ class TestUploadVideo(unittest.TestCase):
              patch.dict("sys.modules", {"googleapiclient.http": mock_http_module}), \
              patch("time.sleep"):
             mock_cfg.app = {}
-            with self.assertRaises(HttpError):
+            with self.assertRaises(RuntimeError) as cm:
                 upload_video("/fake/video.mp4", title="Test")
+        self.assertIn("503", str(cm.exception))
 
     def test_non_retryable_http_error_no_sleep(self):
         from app.services.youtube import upload_video
@@ -364,8 +378,9 @@ class TestUploadVideo(unittest.TestCase):
              patch.dict("sys.modules", {"googleapiclient.http": mock_http_module}), \
              patch("time.sleep") as mock_sleep:
             mock_cfg.app = {}
-            with self.assertRaises(HttpError):
+            with self.assertRaises(RuntimeError) as cm:
                 upload_video("/fake/video.mp4", title="Test")
+        self.assertIn("403", str(cm.exception))
         mock_sleep.assert_not_called()
 
     def test_uses_config_default_privacy(self):

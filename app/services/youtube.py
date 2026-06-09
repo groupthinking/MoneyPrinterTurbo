@@ -81,7 +81,12 @@ def _load_credentials():
     with _token_lock:
         creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as exc:
+                raise RuntimeError(
+                    "YouTube token refresh failed — re-run authorize_youtube.py"
+                ) from exc
             _write_token_secure(creds.to_json())
             logger.info("YouTube token refreshed")
         return creds
@@ -139,10 +144,12 @@ def _truncate_tags(tags: list[str], max_chars: int = 500) -> list[str]:
     total = 0
     for tag in tags:
         separator_len = 1 if result else 0  # comma between tags counts toward limit
-        if total + separator_len + len(tag) > max_chars:
+        # YouTube implicitly wraps phrase tags (with spaces) in quotes, costing +2 chars.
+        tag_len = len(tag) + (2 if " " in tag else 0)
+        if total + separator_len + tag_len > max_chars:
             break
         result.append(tag)
-        total += separator_len + len(tag)
+        total += separator_len + tag_len
     return result
 
 
@@ -200,7 +207,9 @@ def upload_video(
                 )
                 time.sleep(wait)
             else:
-                raise
+                raise RuntimeError(
+                    f"YouTube API error (HTTP {exc.resp.status})"
+                ) from exc
 
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"

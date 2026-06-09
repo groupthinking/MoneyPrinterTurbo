@@ -77,7 +77,10 @@ def yt_upload(req: UploadRequest):
     if not req.task_id or "/" in req.task_id or ".." in req.task_id:
         raise HTTPException(status_code=400, detail="Invalid task_id")
     # Prevent path traversal: filename must be a bare name with no directory components
-    if os.path.basename(req.filename) != req.filename or not req.filename:
+    if (
+        os.path.basename(req.filename) != req.filename
+        or req.filename in {"", ".", ".."}
+    ):
         raise HTTPException(status_code=400, detail="Invalid filename")
     video_path = os.path.join(utils.task_dir(req.task_id), req.filename)
     try:

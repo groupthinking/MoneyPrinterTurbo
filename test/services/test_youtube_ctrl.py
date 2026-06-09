@@ -181,6 +181,20 @@ class TestYtUpload(unittest.TestCase):
                                json=self._valid_payload(filename="subdir/video.mp4"))
         self.assertEqual(resp.status_code, 400)
 
+    def test_dot_filename_rejected(self):
+        client = self._make_app()
+        with patch("app.services.youtube.is_authorised", return_value=True):
+            resp = client.post("/api/v1/youtube/upload",
+                               json=self._valid_payload(filename="."))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_dotdot_filename_rejected(self):
+        client = self._make_app()
+        with patch("app.services.youtube.is_authorised", return_value=True):
+            resp = client.post("/api/v1/youtube/upload",
+                               json=self._valid_payload(filename=".."))
+        self.assertEqual(resp.status_code, 400)
+
     def test_task_id_traversal_rejected(self):
         client = self._make_app()
         with patch("app.services.youtube.is_authorised", return_value=True):
