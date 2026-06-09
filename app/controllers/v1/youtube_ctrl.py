@@ -1,9 +1,12 @@
 """YouTube auth and upload endpoints."""
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.controllers import base
 from app.services import youtube as yt_svc
+from app.utils import utils
 
 router = APIRouter(
     prefix="/api/v1/youtube",
@@ -43,24 +46,29 @@ def yt_auth_code(req: CodeRequest):
 
 
 class UploadRequest(BaseModel):
-    video_path: str
+    task_id: str
+    filename: str
     title: str
     description: str = ""
     tags: list[str] = []
-    privacy_status: str = "public"
+    privacy_status: str | None = None
 
 
 @router.post("/upload")
 def yt_upload(req: UploadRequest):
-    """Upload a local video file to YouTube. Returns {video_id, url}."""
+    """Upload a completed task's video to YouTube. Returns {video_id, url}."""
     if not yt_svc.is_authorised():
         raise HTTPException(
             status_code=503,
             detail="YouTube not authorised. Call GET /api/v1/youtube/auth then POST /api/v1/youtube/auth/code",
         )
+    # Prevent path traversal: filename must be a bare name with no directory components
+    if os.path.basename(req.filename) != req.filename or not req.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    video_path = os.path.join(utils.task_dir(req.task_id), req.filename)
     try:
         result = yt_svc.upload_video(
-            video_path=req.video_path,
+            video_path=video_path,
             title=req.title,
             description=req.description,
             tags=req.tags,

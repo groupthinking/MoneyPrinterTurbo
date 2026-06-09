@@ -169,8 +169,10 @@ def get_usage(request: Request):
         quota = usage_tracker._get_quota(api_key)
         data = {"api_key_suffix": api_key[-6:], "used_today": used, "daily_quota": quota}
     else:
-        # No key presented (open-access mode) — return aggregate
-        data = {"usage_today": usage_tracker.get_all_usage()}
+        # No key presented (open-access mode) — return aggregate with masked keys
+        all_usage = usage_tracker.get_all_usage()
+        masked = {f"...{k[-6:]}": v for k, v in all_usage.items()}
+        data = {"usage_today": masked}
     return utils.get_response(200, data)
 
 

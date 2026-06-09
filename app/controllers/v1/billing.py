@@ -25,7 +25,7 @@ def _require_stripe() -> None:
 def _validate_redirect_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise HTTPException(status_code=400, detail=f"Invalid redirect URL — must be absolute http/https")
+        raise HTTPException(status_code=400, detail="Invalid redirect URL — must be absolute http/https")
 
 
 class CheckoutRequest(BaseModel):

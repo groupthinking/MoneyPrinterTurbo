@@ -379,7 +379,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         if yt_svc.is_authorised():
             logger.info("\n\n## uploading videos to YouTube")
             affiliate_url = getattr(params, "affiliate_url", "") or ""
-            description = params.video_script or params.video_subject or ""
+            description = video_script or params.video_subject or ""
             if affiliate_url:
                 description = f"{description}\n\n{affiliate_url}".strip()
             for video_path in final_video_paths:

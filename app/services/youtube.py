@@ -8,7 +8,9 @@ First-time setup:
   3. Subsequent uploads use the saved token (auto-refreshed).
 """
 import os
+import random
 import threading
+import time
 from pathlib import Path
 
 from loguru import logger
@@ -21,6 +23,8 @@ _token_lock = threading.Lock()
 
 # Privacy: "public" | "unlisted" | "private"
 DEFAULT_PRIVACY = "public"
+
+_LOOPBACK_REDIRECT = "http://localhost"
 
 
 def _client_config() -> dict:
@@ -36,9 +40,19 @@ def _client_config() -> dict:
             "client_secret": client_secret,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost"],
+            "redirect_uris": [_LOOPBACK_REDIRECT],
         }
     }
+
+
+def _write_token_secure(json_str: str) -> None:
+    """Write token JSON to disk and restrict permissions to owner-only."""
+    _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _TOKEN_PATH.write_text(json_str)
+    try:
+        os.chmod(_TOKEN_PATH, 0o600)
+    except OSError:
+        pass  # Windows does not support POSIX chmod
 
 
 def _load_credentials():
@@ -54,9 +68,9 @@ def _load_credentials():
         creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            _TOKEN_PATH.write_text(creds.to_json())
+            _write_token_secure(creds.to_json())
             logger.info("YouTube token refreshed")
-    return creds
+        return creds
 
 
 def _build_service():
@@ -74,7 +88,8 @@ def is_authorised() -> bool:
         from google.oauth2.credentials import Credentials
         creds = Credentials.from_authorized_user_file(str(_TOKEN_PATH), _SCOPES)
         return creds.valid or bool(creds.refresh_token)
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"is_authorised check failed for {_TOKEN_PATH}: {exc}")
         return False
 
 
@@ -83,7 +98,7 @@ def get_auth_url() -> str:
     from google_auth_oauthlib.flow import Flow
 
     flow = Flow.from_client_config(_client_config(), scopes=_SCOPES)
-    flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+    flow.redirect_uri = _LOOPBACK_REDIRECT
     auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
     return auth_url
 
@@ -93,12 +108,23 @@ def exchange_code(code: str) -> None:
     from google_auth_oauthlib.flow import Flow
 
     flow = Flow.from_client_config(_client_config(), scopes=_SCOPES)
-    flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+    flow.redirect_uri = _LOOPBACK_REDIRECT
     flow.fetch_token(code=code)
     with _token_lock:
-        _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _TOKEN_PATH.write_text(flow.credentials.to_json())
+        _write_token_secure(flow.credentials.to_json())
     logger.info(f"YouTube token saved to {_TOKEN_PATH}")
+
+
+def _truncate_tags(tags: list[str], max_chars: int = 500) -> list[str]:
+    """Return tags truncated so total character length stays within max_chars."""
+    result: list[str] = []
+    total = 0
+    for tag in tags:
+        if total + len(tag) > max_chars:
+            break
+        result.append(tag)
+        total += len(tag)
+    return result
 
 
 def upload_video(
@@ -110,6 +136,7 @@ def upload_video(
     category_id: str = "22",  # 22 = People & Blogs
 ) -> dict:
     """Upload a video to YouTube. Returns {video_id, url}."""
+    from googleapiclient.errors import HttpError
     from googleapiclient.http import MediaFileUpload
 
     if not os.path.exists(video_path):
@@ -122,7 +149,7 @@ def upload_video(
         "snippet": {
             "title": title[:100],
             "description": description[:5000],
-            "tags": (tags or [])[:500],
+            "tags": _truncate_tags(tags or []),
             "categoryId": category_id,
         },
         "status": {
@@ -134,11 +161,27 @@ def upload_video(
     media = MediaFileUpload(video_path, mimetype="video/*", resumable=True, chunksize=5 * 1024 * 1024)
     request = service.videos().insert(part="snippet,status", body=body, media_body=media)
 
+    _RETRYABLE = (500, 502, 503, 504)
+    _MAX_RETRIES = 5
+    retry_count = 0
     response = None
     while response is None:
-        status, response = request.next_chunk()
-        if status:
-            logger.info(f"YouTube upload {int(status.progress() * 100)}%")
+        try:
+            status, response = request.next_chunk()
+            if status:
+                logger.info(f"YouTube upload {int(status.progress() * 100)}%")
+            retry_count = 0
+        except HttpError as exc:
+            if exc.resp.status in _RETRYABLE and retry_count < _MAX_RETRIES:
+                retry_count += 1
+                wait = (2 ** retry_count) + random.random()
+                logger.warning(
+                    f"YouTube upload transient HTTP {exc.resp.status}, "
+                    f"retry {retry_count}/{_MAX_RETRIES} in {wait:.1f}s"
+                )
+                time.sleep(wait)
+            else:
+                raise
 
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"

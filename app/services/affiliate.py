@@ -228,13 +228,7 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
     )
     resp.raise_for_status()
 
-    # Use defusedxml to prevent XML bomb / XXE attacks from external API responses
-    try:
-        import defusedxml.ElementTree as _ET
-        _ParseError = Exception
-    except ImportError:
-        import xml.etree.ElementTree as _ET  # type: ignore[no-redef]
-        _ParseError = _ET.ParseError
+    from defusedxml import ElementTree as _ET
 
     def _extract(root, tag: str) -> str:
         elem = root.find(f".//{tag}")
@@ -243,7 +237,7 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
     try:
         root = _ET.fromstring(resp.text)
     except Exception as exc:
-        raise ValueError(f"CJ returned unparseable XML: {exc}")
+        raise ValueError(f"CJ returned unparseable XML: {exc}") from exc
 
     title = _extract(root, "name")
     description = _extract(root, "description")

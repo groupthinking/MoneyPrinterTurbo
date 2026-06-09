@@ -8,6 +8,7 @@ Schedule: recurring jobs stored in SQLite; a background thread fires
 """
 import contextlib
 import json
+import math
 import sqlite3
 import threading
 import time
@@ -140,6 +141,11 @@ def create_batch(
                 if api_key:
                     usage_tracker.decrement(api_key)
                 logger.warning(f"batch {batch_id}: queue full, skipped topic '{topic}'")
+            except Exception as exc:
+                sm.state.delete_task(task_id)
+                if api_key:
+                    usage_tracker.decrement(api_key)
+                logger.warning(f"batch {batch_id}: failed to queue topic '{topic}': {exc}")
         conn.execute("UPDATE batches SET total = ? WHERE id = ?", (len(task_ids), batch_id))
         conn.commit()
 
@@ -216,8 +222,8 @@ def add_scheduled_job(
     api_key: str = "",
     name: str = "",
 ) -> str:
-    if interval_hours <= 0:
-        raise ValueError("interval_hours must be greater than 0")
+    if not math.isfinite(interval_hours) or interval_hours <= 0:
+        raise ValueError("interval_hours must be a finite positive number")
     job_id = utils.get_uuid()
     now = datetime.now(timezone.utc)
     next_run = (now + timedelta(hours=interval_hours)).isoformat()
@@ -311,13 +317,14 @@ def _scheduler_loop():
 
 
 _scheduler_thread: threading.Thread | None = None
+_scheduler_init_lock = threading.Lock()
 
 
 def init_scheduler() -> None:
     """Start the background scheduler. Called once from the ASGI startup event."""
     global _scheduler_thread
-    if _scheduler_thread and _scheduler_thread.is_alive():
-        return
-    _scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True, name="batch-scheduler")
-    _scheduler_thread.start()
-    logger.info("Batch scheduler started")
+    with _scheduler_init_lock:
+        if _scheduler_thread and _scheduler_thread.is_alive():
+            return
+        _scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True, name="batch-scheduler")
+        _scheduler_thread.start()

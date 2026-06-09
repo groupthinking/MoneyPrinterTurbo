@@ -12,11 +12,17 @@ from pathlib import Path
 
 from app.services.youtube import exchange_code, get_auth_url, _TOKEN_PATH
 
-print("Opening browser for YouTube authorisation...")
-auth_url = get_auth_url()
-webbrowser.open(auth_url)
-print(f"\nIf the browser didn't open, visit:\n{auth_url}\n")
-code = input("Paste the authorisation code here: ").strip()
-exchange_code(code)
-print(f"\nDone! Token saved to {_TOKEN_PATH}")
-print("You can now upload videos to YouTube from MoneyPrinterTurbo.")
+
+def main() -> None:
+    print("Opening browser for YouTube authorisation...")
+    auth_url = get_auth_url()
+    webbrowser.open(auth_url)
+    print(f"\nIf the browser didn't open, visit:\n{auth_url}\n")
+    code = input("Paste the authorisation code here: ").strip()
+    exchange_code(code)
+    print(f"\nDone! Token saved to {_TOKEN_PATH}")
+    print("You can now upload videos to YouTube from MoneyPrinterTurbo.")
+
+
+if __name__ == "__main__":
+    main()

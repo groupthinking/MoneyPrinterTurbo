@@ -70,7 +70,8 @@ def issue_key(
              customer_email, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
-    logger.info(f"Issued {tier} key …{key[-8:]} for {customer_email or stripe_customer_id or 'anon'}")
+    actor = f"cust …{stripe_customer_id[-8:]}" if stripe_customer_id else "anon"
+    logger.info(f"Issued {tier} key …{key[-8:]} for {actor}")
     return key
 
 
