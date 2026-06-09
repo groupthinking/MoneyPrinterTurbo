@@ -1,5 +1,6 @@
 """YouTube auth and upload endpoints."""
 import os
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
@@ -43,13 +44,13 @@ def yt_auth_code(req: CodeRequest):
     """Exchange an OAuth authorisation code for a persistent token."""
     try:
         yt_svc.exchange_code(req.code)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid authorization code")
-    except RuntimeError:
-        raise HTTPException(status_code=503, detail="YouTube auth service unavailable")
-    except Exception:
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid authorization code") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="YouTube auth service unavailable") from exc
+    except Exception as exc:
         logger.exception("Unexpected YouTube auth/code exchange failure")
-        raise HTTPException(status_code=500, detail="YouTube authorization failed")
+        raise HTTPException(status_code=500, detail="YouTube authorization failed") from exc
     return {"status": "authorised"}
 
 
@@ -61,7 +62,7 @@ class UploadRequest(BaseModel):
     title: str
     description: str = ""
     tags: list[str] = []
-    privacy_status: str | None = None
+    privacy_status: Literal["public", "unlisted", "private"] | None = None
 
 
 @router.post("/upload")
@@ -72,6 +73,9 @@ def yt_upload(req: UploadRequest):
             status_code=503,
             detail="YouTube not authorised. Call GET /api/v1/youtube/auth then POST /api/v1/youtube/auth/code",
         )
+    # Prevent task_id path traversal: must not contain path separators or parent refs
+    if not req.task_id or "/" in req.task_id or ".." in req.task_id:
+        raise HTTPException(status_code=400, detail="Invalid task_id")
     # Prevent path traversal: filename must be a bare name with no directory components
     if os.path.basename(req.filename) != req.filename or not req.filename:
         raise HTTPException(status_code=400, detail="Invalid filename")

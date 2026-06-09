@@ -3,24 +3,26 @@ import sys
 import unittest
 from io import StringIO
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 class TestAuthorizeYoutubeMain(unittest.TestCase):
-    def _run_main(self):
-        from authorize_youtube import main
-        return main
-
     def test_get_auth_url_runtime_error_prints_and_returns(self):
         from authorize_youtube import main
         with patch("authorize_youtube.get_auth_url", side_effect=RuntimeError("no creds")), \
+             patch("authorize_youtube.webbrowser.open") as mock_browser, \
+             patch("authorize_youtube.exchange_code") as mock_exchange, \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
-            main()
-        output = mock_out.getvalue()
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            output = mock_out.getvalue()
+        self.assertEqual(cm.exception.code, 1)
         self.assertIn("Error:", output)
         self.assertIn("config.toml", output)
+        mock_browser.assert_not_called()
+        mock_exchange.assert_not_called()
 
     def test_success_flow_saves_token(self):
         from authorize_youtube import main
@@ -42,8 +44,10 @@ class TestAuthorizeYoutubeMain(unittest.TestCase):
              patch("authorize_youtube.webbrowser.open"), \
              patch("builtins.input", return_value="badcode"), \
              patch("sys.stdout", new_callable=StringIO) as mock_out:
-            main()
-        output = mock_out.getvalue()
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            output = mock_out.getvalue()
+        self.assertEqual(cm.exception.code, 1)
         self.assertIn("Authorization failed", output)
         self.assertIn("bad code", output)
 

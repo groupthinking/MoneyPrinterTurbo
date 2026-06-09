@@ -2,27 +2,11 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fastapi.testclient import TestClient
-
-
-def _make_client(*, yt_authorised=True, api_key_valid=True):
-    """Return a TestClient with the youtube router mounted and auth bypassed."""
-    from fastapi import FastAPI
-    from app.controllers.v1 import youtube_ctrl
-    from app.controllers import base
-
-    app = FastAPI()
-    app.include_router(youtube_ctrl.router)
-
-    # Bypass token verification
-    if api_key_valid:
-        youtube_ctrl.router.dependencies.clear()
-
-    return TestClient(app, raise_server_exceptions=False)
 
 
 class TestYtStatus(unittest.TestCase):
@@ -196,6 +180,20 @@ class TestYtUpload(unittest.TestCase):
             resp = client.post("/api/v1/youtube/upload",
                                json=self._valid_payload(filename="subdir/video.mp4"))
         self.assertEqual(resp.status_code, 400)
+
+    def test_task_id_traversal_rejected(self):
+        client = self._make_app()
+        with patch("app.services.youtube.is_authorised", return_value=True):
+            resp = client.post("/api/v1/youtube/upload",
+                               json=self._valid_payload(task_id="../storage"))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_privacy_status_rejected(self):
+        client = self._make_app()
+        with patch("app.services.youtube.is_authorised", return_value=True):
+            resp = client.post("/api/v1/youtube/upload",
+                               json=self._valid_payload(privacy_status="secret"))
+        self.assertEqual(resp.status_code, 422)
 
     def test_file_not_found_returns_404(self):
         client = self._make_app()

@@ -20,7 +20,7 @@ def main() -> None:
     except RuntimeError as e:
         print(f"Error: {e}")
         print("Please set youtube_client_id and youtube_client_secret in config.toml")
-        return
+        raise SystemExit(1)
     print("Opening browser for YouTube authorisation...")
     webbrowser.open(auth_url)
     print(f"\nIf the browser didn't open, visit:\n{auth_url}\n")
@@ -29,7 +29,7 @@ def main() -> None:
         exchange_code(code)
     except Exception as e:
         print(f"Authorization failed: {e} — check the code or your config.")
-        return
+        raise SystemExit(1)
     print(f"\nDone! Token saved to {_TOKEN_PATH}")
     print("You can now upload videos to YouTube from MoneyPrinterTurbo.")
 
