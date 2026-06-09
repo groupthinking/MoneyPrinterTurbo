@@ -47,11 +47,15 @@ def _client_config() -> dict:
 
 
 def _write_token_secure(json_str: str) -> None:
-    """Write token JSON to disk and restrict permissions to owner-only."""
+    """Write token JSON to disk atomically and restrict permissions to owner-only."""
     _TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _TOKEN_PATH.write_text(json_str)
+    tmp_path = _TOKEN_PATH.with_suffix(".tmp")
+    fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(json_str)
+    os.replace(str(tmp_path), str(_TOKEN_PATH))
     try:
-        os.chmod(_TOKEN_PATH, 0o600)
+        os.chmod(str(_TOKEN_PATH), 0o600)
     except OSError:
         pass  # Windows does not support POSIX chmod
 

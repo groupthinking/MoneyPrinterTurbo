@@ -54,20 +54,22 @@ class TestTruncateTags(unittest.TestCase):
 
 class TestWriteTokenSecure(unittest.TestCase):
     def test_writes_and_chmods(self):
-        fake_path = MagicMock(spec=Path)
-        fake_path.parent = MagicMock()
-        with patch("app.services.youtube._TOKEN_PATH", fake_path), \
-             patch("os.chmod") as mock_chmod:
-            _write_token_secure('{"token": "x"}')
-        fake_path.write_text.assert_called_once_with('{"token": "x"}')
-        mock_chmod.assert_called_once()
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "youtube_token.json"
+            with patch("app.services.youtube._TOKEN_PATH", token_path), \
+                 patch("os.chmod") as mock_chmod:
+                _write_token_secure('{"token": "x"}')
+            self.assertEqual(token_path.read_text(), '{"token": "x"}')
+            mock_chmod.assert_called_once()
 
     def test_chmod_oserror_suppressed(self):
-        fake_path = MagicMock(spec=Path)
-        fake_path.parent = MagicMock()
-        with patch("app.services.youtube._TOKEN_PATH", fake_path), \
-             patch("os.chmod", side_effect=OSError("no chmod")):
-            _write_token_secure("{}")  # must not raise
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "youtube_token.json"
+            with patch("app.services.youtube._TOKEN_PATH", token_path), \
+                 patch("os.chmod", side_effect=OSError("no chmod")):
+                _write_token_secure("{}")  # must not raise
 
 
 def _mock_google_modules(creds_obj):
@@ -185,30 +187,32 @@ class TestExchangeCode(unittest.TestCase):
         return mock_cfg
 
     def test_saves_token_to_disk(self):
+        import tempfile
         from app.services.youtube import exchange_code
         mock_flow = MagicMock()
         mock_flow.credentials.to_json.return_value = '{"token": "abc"}'
-        fake_path = MagicMock(spec=Path)
-        fake_path.parent = MagicMock()
-        with patch("app.services.youtube.config", self._make_mock_config()), \
-             patch.dict("sys.modules", _mock_oauthlib_modules(mock_flow)), \
-             patch("app.services.youtube._TOKEN_PATH", fake_path), \
-             patch("os.chmod"):
-            exchange_code("auth-code-123")
-        mock_flow.fetch_token.assert_called_once_with(code="auth-code-123")
-        fake_path.write_text.assert_called_once_with('{"token": "abc"}')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "youtube_token.json"
+            with patch("app.services.youtube.config", self._make_mock_config()), \
+                 patch.dict("sys.modules", _mock_oauthlib_modules(mock_flow)), \
+                 patch("app.services.youtube._TOKEN_PATH", token_path), \
+                 patch("os.chmod"):
+                exchange_code("auth-code-123")
+            mock_flow.fetch_token.assert_called_once_with(code="auth-code-123")
+            self.assertEqual(token_path.read_text(), '{"token": "abc"}')
 
     def test_sets_loopback_redirect(self):
+        import tempfile
         from app.services.youtube import exchange_code
         mock_flow = MagicMock()
         mock_flow.credentials.to_json.return_value = "{}"
-        fake_path = MagicMock(spec=Path)
-        fake_path.parent = MagicMock()
-        with patch("app.services.youtube.config", self._make_mock_config()), \
-             patch.dict("sys.modules", _mock_oauthlib_modules(mock_flow)), \
-             patch("app.services.youtube._TOKEN_PATH", fake_path), \
-             patch("os.chmod"):
-            exchange_code("code")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "youtube_token.json"
+            with patch("app.services.youtube.config", self._make_mock_config()), \
+                 patch.dict("sys.modules", _mock_oauthlib_modules(mock_flow)), \
+                 patch("app.services.youtube._TOKEN_PATH", token_path), \
+                 patch("os.chmod"):
+                exchange_code("code")
         self.assertEqual(mock_flow.redirect_uri, _LOOPBACK_REDIRECT)
 
 

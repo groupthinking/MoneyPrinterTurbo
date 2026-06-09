@@ -129,19 +129,17 @@ class TestYtAuthCode(unittest.TestCase):
             resp = client.post("/api/v1/youtube/auth/code", json={"code": "bad"})
         self.assertEqual(resp.status_code, 400)
 
-    def test_runtime_error_returns_400(self):
+    def test_runtime_error_returns_503(self):
         client = self._make_app()
         with patch("app.services.youtube.exchange_code", side_effect=RuntimeError("flow failed")):
             resp = client.post("/api/v1/youtube/auth/code", json={"code": "bad"})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 503)
 
-    def test_unexpected_exception_propagates(self):
-        # MemoryError is not caught by the (ValueError, RuntimeError) guard,
-        # so it propagates out of the endpoint rather than becoming an HTTP 400.
+    def test_unexpected_exception_returns_500(self):
         client = self._make_app()
-        with patch("app.services.youtube.exchange_code", side_effect=MemoryError("oom")), \
-             self.assertRaises(MemoryError):
-            client.post("/api/v1/youtube/auth/code", json={"code": "bad"})
+        with patch("app.services.youtube.exchange_code", side_effect=MemoryError("oom")):
+            resp = client.post("/api/v1/youtube/auth/code", json={"code": "bad"})
+        self.assertEqual(resp.status_code, 500)
 
 
 class TestYtUpload(unittest.TestCase):

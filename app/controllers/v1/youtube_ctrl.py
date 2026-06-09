@@ -2,6 +2,7 @@
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from loguru import logger
 from pydantic import BaseModel
 
 from app.controllers import base
@@ -42,8 +43,13 @@ def yt_auth_code(req: CodeRequest):
     """Exchange an OAuth authorisation code for a persistent token."""
     try:
         yt_svc.exchange_code(req.code)
-    except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid authorization code")
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="YouTube auth service unavailable")
+    except Exception:
+        logger.exception("Unexpected YouTube auth/code exchange failure")
+        raise HTTPException(status_code=500, detail="YouTube authorization failed")
     return {"status": "authorised"}
 
 
