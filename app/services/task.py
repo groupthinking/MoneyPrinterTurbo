@@ -14,6 +14,7 @@ from app.utils import utils
 
 
 def generate_script(task_id, params):
+    """Generate or validate the video script; returns None and marks task failed on error."""
     logger.info("\n\n## generating video script")
     video_script = params.video_script.strip()
     if not video_script:
@@ -34,6 +35,7 @@ def generate_script(task_id, params):
 
 
 def generate_terms(task_id, params, video_script):
+    """Generate or normalise B-roll search terms; returns None and marks task failed on error."""
     logger.info("\n\n## generating video terms")
     video_terms = params.video_terms
     if not video_terms:
@@ -59,6 +61,7 @@ def generate_terms(task_id, params, video_script):
 
 
 def save_script_data(task_id, video_script, video_terms, params):
+    """Persist the generated script and search terms to script.json in the task directory."""
     script_file = path.join(utils.task_dir(task_id), "script.json")
     script_data = {
         "script": video_script,
@@ -162,6 +165,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
 
 
 def get_video_materials(task_id, params, video_terms, audio_duration):
+    """Return a list of video paths: preprocessed locals or downloaded from the configured source."""
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -197,6 +201,7 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
 def generate_final_videos(
     task_id, params, downloaded_videos, audio_file, subtitle_path
 ):
+    """Combine clips, burn subtitles, and return (final_video_paths, combined_video_paths)."""
     final_video_paths = []
     combined_video_paths = []
     video_concat_mode = (
@@ -246,6 +251,7 @@ def generate_final_videos(
 
 
 def start(task_id, params: VideoParams, stop_at: str = "video"):
+    """Run the full video-generation pipeline, stopping at stop_at stage."""
     logger.info(f"start task: {task_id}, stop_at: {stop_at}")
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=5)
 
@@ -372,6 +378,30 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
             else:
                 logger.warning(f"⚠️ Failed to cross-post: {video_path} - {result.get('error', 'Unknown error')}")
 
+    # 8. Upload to YouTube (if authorised and enabled)
+    youtube_results = []
+    if config.app.get("youtube_auto_upload", False):
+        from app.services import youtube as yt_svc
+        if yt_svc.is_authorised():
+            logger.info("\n\n## uploading videos to YouTube")
+            affiliate_url = getattr(params, "affiliate_url", "") or ""
+            description = video_script or params.video_subject or ""
+            if affiliate_url:
+                description = f"{description}\n\n{affiliate_url}".strip()
+            for video_path in final_video_paths:
+                try:
+                    yt_result = yt_svc.upload_video(
+                        video_path=video_path,
+                        title=(params.video_subject or "")[:100] or "New Video",
+                        description=description,
+                        tags=["shorts", "viral"],
+                    )
+                    youtube_results.append({"success": True, **yt_result})
+                    logger.info(f"✅ YouTube upload: {yt_result['url']}")
+                except Exception as exc:
+                    logger.warning(f"⚠️ YouTube upload failed: {exc}")
+                    youtube_results.append({"success": False, "error": str(exc)})
+
     kwargs = {
         "videos": final_video_paths,
         "combined_videos": combined_video_paths,
@@ -382,6 +412,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         "subtitle_path": subtitle_path,
         "materials": downloaded_videos,
         "cross_post_results": cross_post_results if cross_post_results else None,
+        "youtube_results": youtube_results if youtube_results else None,
     }
     sm.state.update_task(
         task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs

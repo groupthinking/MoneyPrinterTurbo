@@ -1,5 +1,6 @@
 """Billing endpoints: Stripe checkout, webhook, and key management."""
 from typing import Annotated
+from urllib.parse import urlparse
 
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -9,19 +10,29 @@ from pydantic import BaseModel
 
 from app.controllers import base
 from app.config import config
-from app.services.billing import TIERS, deactivate_by_subscription, get_key_info, issue_key
+from app.services.billing import TIERS, deactivate_by_subscription, get_key_by_subscription, get_key_info, issue_key
 from app.services.usage import usage_tracker
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
 def _require_stripe() -> None:
+    """Raise HTTP 503 if Stripe is not configured, otherwise set the API key."""
     if not config.app.get("stripe_secret_key", ""):
         raise HTTPException(status_code=503, detail="Stripe not configured — set stripe_secret_key in config.toml")
     stripe.api_key = config.app["stripe_secret_key"]
 
 
+def _validate_redirect_url(url: str) -> None:
+    """Raise HTTP 400 if url is not an absolute http/https URL."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid redirect URL — must be absolute http/https")
+
+
 class CheckoutRequest(BaseModel):
+    """Request body for POST /billing/checkout."""
+
     tier: str
     success_url: str
     cancel_url: str
@@ -32,6 +43,8 @@ class CheckoutRequest(BaseModel):
 def create_checkout(req: CheckoutRequest):
     """Create a Stripe Checkout session for a paid tier. Returns {checkout_url}."""
     _require_stripe()
+    _validate_redirect_url(req.success_url)
+    _validate_redirect_url(req.cancel_url)
     paid_tiers = [t for t in TIERS if t != "free"]
     if req.tier not in paid_tiers:
         raise HTTPException(status_code=400, detail=f"tier must be one of: {paid_tiers}")
@@ -62,6 +75,8 @@ async def stripe_webhook(
     payload = await request.body()
     try:
         event = stripe.Webhook.construct_event(payload, stripe_signature, secret)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail="Invalid Stripe payload") from err
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
@@ -74,9 +89,18 @@ async def stripe_webhook(
         customer_id = session.get("customer", "")
         subscription_id = session.get("subscription", "")
         customer_email = session.get("customer_details", {}).get("email", "")
-        key = issue_key(tier, customer_id, subscription_id, customer_email)
-        # TODO: email the key to customer_email via your transactional mailer
-        logger.info(f"New {tier} key issued — …{key[-8:]} → {customer_email}")
+        # Idempotency: Stripe may retry events; avoid issuing duplicate keys
+        if subscription_id and get_key_by_subscription(subscription_id):
+            logger.info(f"Duplicate event — key already issued for subscription {subscription_id}")
+        else:
+            key = issue_key(tier, customer_id, subscription_id, customer_email)
+            # TODO: email the key to customer_email via your transactional mailer
+            masked_email = (
+                f"{customer_email[:2]}***@***"
+                if customer_email and "@" in customer_email
+                else "redacted"
+            )
+            logger.info(f"New {tier} key issued — …{key[-8:]} → {masked_email}")
 
     elif etype in ("customer.subscription.deleted", "customer.subscription.paused"):
         sub = event["data"]["object"]
@@ -87,7 +111,9 @@ async def stripe_webhook(
 
 @router.post("/keys/free")
 def issue_free_key():
-    """Issue a free-tier key immediately — no payment required. Rate-limit this in prod."""
+    """Issue a free-tier key immediately — only when enable_free_keys = true in config."""
+    if not config.app.get("enable_free_keys", False):
+        raise HTTPException(status_code=403, detail="Free key issuance is disabled — set enable_free_keys = true in config.toml")
     key = issue_key("free")
     return {
         "api_key": key,

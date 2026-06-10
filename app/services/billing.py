@@ -1,4 +1,5 @@
 """Stripe billing — API key issuance, SQLite key store, tier definitions."""
+import contextlib
 import secrets
 import sqlite3
 import threading
@@ -19,13 +20,19 @@ TIERS: dict[str, int] = {
 _lock = threading.Lock()
 
 
-def _db() -> sqlite3.Connection:
+@contextlib.contextmanager
+def _db():
+    """Context manager that opens a billing-DB connection and closes it on exit."""
     conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _init_db():
+    """Create the api_keys table and uniqueness index if they do not exist."""
     with _db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -39,6 +46,13 @@ def _init_db():
                 active                INTEGER NOT NULL DEFAULT 1
             )
         """)
+        # Prevent concurrent webhook replays from issuing duplicate active keys
+        # for the same Stripe subscription.
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_api_keys_active_subscription
+            ON api_keys(stripe_subscription_id)
+            WHERE stripe_subscription_id <> '' AND active = 1
+        """)
         conn.commit()
 
 
@@ -51,21 +65,36 @@ def issue_key(
     stripe_subscription_id: str = "",
     customer_email: str = "",
 ) -> str:
+    """Generate, persist, and return a new API key for the given tier."""
     if tier not in TIERS:
         raise ValueError(f"Unknown tier: {tier}")
     key = "mpt_" + secrets.token_urlsafe(32)
     quota = TIERS[tier]
     with _lock, _db() as conn:
-        conn.execute(
-            """INSERT INTO api_keys
-               (key, tier, daily_quota, stripe_customer_id, stripe_subscription_id,
-                customer_email, created_at, active)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-            (key, tier, quota, stripe_customer_id, stripe_subscription_id,
-             customer_email, datetime.now(timezone.utc).isoformat()),
-        )
-        conn.commit()
-    logger.info(f"Issued {tier} key …{key[-8:]} for {customer_email or stripe_customer_id or 'anon'}")
+        try:
+            conn.execute(
+                """INSERT INTO api_keys
+                   (key, tier, daily_quota, stripe_customer_id, stripe_subscription_id,
+                    customer_email, created_at, active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                (key, tier, quota, stripe_customer_id, stripe_subscription_id,
+                 customer_email, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            # Idempotent replay: a concurrent request already issued a key for
+            # this subscription — return the existing one.
+            if stripe_subscription_id:
+                row = conn.execute(
+                    "SELECT key FROM api_keys WHERE stripe_subscription_id = ? AND active = 1",
+                    (stripe_subscription_id,),
+                ).fetchone()
+                if row:
+                    logger.info(f"Idempotent replay — returning existing key for sub {stripe_subscription_id}")
+                    return row["key"]
+            raise
+    actor = f"cust …{stripe_customer_id[-8:]}" if stripe_customer_id else "anon"
+    logger.info(f"Issued {tier} key …{key[-8:]} for {actor}")
     return key
 
 
@@ -78,7 +107,23 @@ def get_key_info(key: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_key_by_subscription(stripe_subscription_id: str) -> str | None:
+    """Return active key for a subscription ID, or None if none exists."""
+    if not stripe_subscription_id:
+        return None
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT key FROM api_keys WHERE stripe_subscription_id = ? AND active = 1",
+            (stripe_subscription_id,),
+        ).fetchone()
+    return row["key"] if row else None
+
+
 def deactivate_by_subscription(stripe_subscription_id: str):
+    """Mark all active keys for a Stripe subscription as inactive."""
+    if not stripe_subscription_id:
+        logger.warning("deactivate_by_subscription called with empty ID — skipping")
+        return
     with _lock, _db() as conn:
         conn.execute(
             "UPDATE api_keys SET active = 0 WHERE stripe_subscription_id = ?",

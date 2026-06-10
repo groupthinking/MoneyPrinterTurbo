@@ -142,6 +142,22 @@ stripe_price_starter = ""        # price_... (Stripe Price ID for starter tier)
 stripe_price_pro = ""            # price_... (Stripe Price ID for pro tier)
 
 ##########################################################################
+# YouTube Upload (YouTube Data API v3)
+#
+# Setup:
+#   1. Paste your OAuth client credentials below
+#   2. Run:  uv run python authorize_youtube.py
+#      (one-time browser auth — saves token to storage/youtube_token.json)
+#   3. Set youtube_auto_upload = true to upload every generated video
+#
+# Privacy options: "public" | "unlisted" | "private"
+##########################################################################
+youtube_client_id = ""
+youtube_client_secret = ""
+youtube_default_privacy = "public"
+youtube_auto_upload = false
+
+##########################################################################
 # Cross-Post (TikTok / Instagram via Upload-Post)
 # https://upload-post.com
 ##########################################################################

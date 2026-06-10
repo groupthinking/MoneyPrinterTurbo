@@ -38,6 +38,7 @@ router = new_router(dependencies=[Depends(base.verify_token)])
 
 
 def _sanitize_upload_filename(filename: str, request_id: str) -> str:
+    """Strip directory components and reject empty or traversal-only names."""
     # 浏览器或客户端有时会附带目录信息，甚至可能夹带 ../ 这类穿越片段。
     # 这里只保留纯文件名，避免上传接口把文件写到目标目录之外。
     normalized_name = (filename or "").replace("\\", "/").split("/")[-1].strip()
@@ -51,6 +52,7 @@ def _sanitize_upload_filename(filename: str, request_id: str) -> str:
 
 
 def _resolve_path_within_directory(base_dir: str, unsafe_path: str, request_id: str) -> str:
+    """Resolve unsafe_path inside base_dir; raise HTTP 403/404 on traversal or missing file."""
     try:
         return file_security.resolve_path_within_directory(base_dir, unsafe_path)
     except ValueError as exc:
@@ -65,6 +67,7 @@ def _resolve_path_within_directory(base_dir: str, unsafe_path: str, request_id: 
         )
 
 def _task_file_to_uri(file: str, endpoint: str, task_dir: str, request_id: str) -> str:
+    """Convert a local task output path to a public URI, or return it unchanged if unsafe."""
     if not isinstance(file, str):
         return file
 
@@ -93,6 +96,7 @@ def _task_file_to_uri(file: str, endpoint: str, task_dir: str, request_id: str) 
 def create_video(
     background_tasks: BackgroundTasks, request: Request, body: TaskVideoRequest
 ):
+    """Queue a full video generation task and return its task_id."""
     return create_task(request, body, stop_at="video")
 
 
@@ -100,6 +104,7 @@ def create_video(
 def create_subtitle(
     background_tasks: BackgroundTasks, request: Request, body: SubtitleRequest
 ):
+    """Queue a subtitle-only task (pipeline stops after subtitle generation)."""
     return create_task(request, body, stop_at="subtitle")
 
 
@@ -107,6 +112,7 @@ def create_subtitle(
 def create_audio(
     background_tasks: BackgroundTasks, request: Request, body: AudioRequest
 ):
+    """Queue an audio-only task (pipeline stops after TTS generation)."""
     return create_task(request, body, stop_at="audio")
 
 
@@ -115,18 +121,21 @@ def create_task(
     body: Union[TaskVideoRequest, SubtitleRequest, AudioRequest],
     stop_at: str,
 ):
+    """Enforce quota, register task state, enqueue the task, and return the task_id."""
     task_id = utils.get_uuid()
     request_id = base.get_task_id(request)
 
     # Quota check — only enforced when api_key_quotas is configured
     quotas = config._cfg.get("api_key_quotas", {})
+    api_key = base.get_api_key(request) or ""
+    quota_consumed = False
     if quotas:
-        api_key = base.get_api_key(request) or ""
         allowed, reason = usage_tracker.check_and_increment(api_key)
         if not allowed:
             raise HttpException(
                 task_id=task_id, status_code=429, message=f"{request_id}: {reason}"
             )
+        quota_consumed = True
 
     try:
         task = {
@@ -139,6 +148,8 @@ def create_task(
         logger.success(f"Task created: {utils.to_json(task)}")
         return utils.get_response(200, task)
     except TaskQueueFullError as e:
+        if quota_consumed:
+            usage_tracker.decrement(api_key)
         sm.state.delete_task(task_id)
         logger.warning(
             f"reject task because queue is full, request_id: {request_id}, task_id: {task_id}"
@@ -147,6 +158,8 @@ def create_task(
             task_id=task_id, status_code=429, message=f"{request_id}: {str(e)}"
         )
     except ValueError as e:
+        if quota_consumed:
+            usage_tracker.decrement(api_key)
         raise HttpException(
             task_id=task_id, status_code=400, message=f"{request_id}: {str(e)}"
         )
@@ -156,17 +169,18 @@ from fastapi import Query
 
 @router.get("/usage", summary="Get today's video generation counts per API key")
 def get_usage(request: Request):
-    request_id = base.get_task_id(request)
+    """Return today's usage for the caller's key, or masked aggregate in open-access mode."""
     api_key = base.get_api_key(request)
-    quotas = config._cfg.get("api_key_quotas", {})
-    if api_key and quotas:
-        # return only this key's usage to the caller
+    if api_key:
+        # Always scope to the caller's key — never expose other keys' data
         used = usage_tracker.get_usage(api_key)
-        quota = int(quotas.get(api_key, 0))
+        quota = usage_tracker._get_quota(api_key)
         data = {"api_key_suffix": api_key[-6:], "used_today": used, "daily_quota": quota}
     else:
-        # no quota config — return aggregate view for all tracked keys
-        data = {"usage_today": usage_tracker.get_all_usage()}
+        # No key presented (open-access mode) — return aggregate with masked keys
+        all_usage = usage_tracker.get_all_usage()
+        masked = {f"...{k[-6:]}": v for k, v in all_usage.items()}
+        data = {"usage_today": masked}
     return utils.get_response(200, data)
 
 
@@ -195,6 +209,7 @@ class ProductVideoRequest(TaskVideoRequest):
     summary="Resolve a product ID to affiliate metadata",
 )
 def resolve_product_info(request: Request, body: ProductResolveRequest):
+    """Resolve a product ID to affiliate metadata without starting a video task."""
     request_id = base.get_task_id(request)
     if body.network not in SUPPORTED_NETWORKS:
         raise HttpException(
@@ -279,6 +294,7 @@ def create_product_video(request: Request, body: ProductVideoRequest):
 
 @router.get("/tasks", response_model=TaskQueryResponse, summary="Get all tasks")
 def get_all_tasks(request: Request, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1)):
+    """Return a paginated list of all tasks and their current states."""
     request_id = base.get_task_id(request)
     tasks, total = sm.state.get_all_tasks(page, page_size)
 
@@ -300,6 +316,7 @@ def get_task(
     task_id: str = Path(..., description="Task ID"),
     query: TaskQueryRequest = Depends(),
 ):
+    """Return the current state and output file URIs for a single task."""
     request_id = base.get_task_id(request)
     endpoint = config.app.get("endpoint", "").rstrip("/")
     task = sm.state.get_task(task_id)
@@ -330,6 +347,7 @@ def get_task(
     summary="Delete a generated short video task",
 )
 def delete_video(request: Request, task_id: str = Path(..., description="Task ID")):
+    """Delete the task directory and its state entry; returns 404 if not found."""
     request_id = base.get_task_id(request)
     task = sm.state.get_task(task_id)
     if task:
@@ -351,6 +369,7 @@ def delete_video(request: Request, task_id: str = Path(..., description="Task ID
     "/musics", response_model=BgmRetrieveResponse, summary="Retrieve local BGM files"
 )
 def get_bgm_list(request: Request):
+    """Return a list of available BGM files from the songs directory."""
     suffix = "*.mp3"
     song_dir = utils.song_dir()
     files = glob.glob(os.path.join(song_dir, suffix))
@@ -376,6 +395,7 @@ def get_bgm_list(request: Request):
     summary="Upload the BGM file to the songs directory",
 )
 def upload_bgm_file(request: Request, file: UploadFile = File(...)):
+    """Save an uploaded .mp3 file to the songs directory."""
     request_id = base.get_task_id(request)
     safe_filename = _sanitize_upload_filename(file.filename, request_id)
     # check file ext
@@ -398,6 +418,7 @@ def upload_bgm_file(request: Request, file: UploadFile = File(...)):
     "/video_materials", response_model=VideoMaterialRetrieveResponse, summary="Retrieve local video materials"
 )
 def get_video_materials_list(request: Request):
+    """Return a sorted list of local video/image material files."""
     allowed_suffixes = ("mp4", "mov", "avi", "flv", "mkv", "jpg", "jpeg", "png")
     local_videos_dir = utils.storage_dir("local_videos", create=True)
     files = []
@@ -428,6 +449,7 @@ def get_video_materials_list(request: Request):
     summary="Upload the video material file to the local videos directory",
 )
 def upload_video_material_file(request: Request, file: UploadFile = File(...)):
+    """Save an uploaded video or image material to the local_videos directory."""
     request_id = base.get_task_id(request)
     safe_filename = _sanitize_upload_filename(file.filename, request_id)
     # check file ext
@@ -451,6 +473,7 @@ def upload_video_material_file(request: Request, file: UploadFile = File(...)):
 
 @router.get("/stream/{file_path:path}")
 async def stream_video(request: Request, file_path: str):
+    """Stream a task output video with HTTP 206 partial-content range support."""
     request_id = base.get_task_id(request)
     tasks_dir = utils.task_dir()
     video_path = _resolve_path_within_directory(tasks_dir, file_path, request_id)
@@ -470,6 +493,7 @@ async def stream_video(request: Request, file_path: str):
         length = end - start + 1
 
     def file_iterator(file_path, offset=0, bytes_to_read=None):
+        """Yield 4 KB chunks from file_path starting at offset."""
         with open(file_path, "rb") as f:
             f.seek(offset, os.SEEK_SET)
             remaining = bytes_to_read or video_size

@@ -174,6 +174,13 @@
     "Create Schedule": "Create Schedule",
     "Active Schedules": "Active Schedules",
     "Refresh": "Refresh",
-    "No scheduled jobs": "No scheduled jobs yet."
+    "No scheduled jobs": "No scheduled jobs yet.",
+    "YouTube Settings": "**YouTube Settings**",
+    "YouTube Authorised": "✅ YouTube authorised — uploads ready",
+    "YouTube Not Authorised": "⚠️ YouTube not authorised — run authorize_youtube.py",
+    "Get YouTube Auth URL": "Get Auth URL",
+    "Visit the URL, approve, then run authorize_youtube.py": "Visit the URL above, approve, then run: uv run python authorize_youtube.py",
+    "YouTube Privacy": "Default privacy",
+    "Auto Upload to YouTube": "Auto-upload to YouTube"
   }
 }

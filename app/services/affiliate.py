@@ -34,6 +34,8 @@ from app.config import config
 
 @dataclass
 class ProductInfo:
+    """Normalized product metadata returned by any affiliate-network resolver."""
+
     title: str
     affiliate_url: str
     network: str = "manual"
@@ -50,10 +52,12 @@ class ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _amz_sign(key: bytes, msg: str) -> bytes:
+    """Return HMAC-SHA256(key, msg) as raw bytes."""
     return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
 
 def _amz_signature_key(secret: str, date_stamp: str, region: str, service: str) -> bytes:
+    """Derive the Amazon SigV4 signing key from the secret and request scope."""
     k = _amz_sign(("AWS4" + secret).encode("utf-8"), date_stamp)
     k = _amz_sign(k, region)
     k = _amz_sign(k, service)
@@ -62,6 +66,7 @@ def _amz_signature_key(secret: str, date_stamp: str, region: str, service: str) 
 
 def _amz_request(access_key: str, secret_key: str, partner_tag: str,
                  region: str, host: str, payload: dict) -> dict:
+    """Make a SigV4-signed POST to the Amazon PA API and return the JSON response."""
     service = "ProductAdvertisingAPI"
     path = "/paapi5/getitems"
     method = "POST"
@@ -118,6 +123,7 @@ def _amz_request(access_key: str, secret_key: str, partner_tag: str,
 
 
 def _resolve_amazon(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via Amazon PA API 5.0; accepts ASIN or full Amazon URL."""
     access_key = config.app.get("amazon_access_key", "")
     secret_key = config.app.get("amazon_secret_key", "")
     partner_tag = affiliate_tag or config.app.get("amazon_partner_tag", "")
@@ -148,7 +154,7 @@ def _resolve_amazon(product_id: str, affiliate_tag: str) -> ProductInfo:
     }
 
     data = _amz_request(access_key, secret_key, partner_tag, region, host, payload)
-    items = data.get("ItemsResult", {}).get("Items", [])
+    items = (data.get("ItemsResult") or {}).get("Items", [])
     if not items:
         raise ValueError(f"Amazon returned no results for ASIN {asin}")
 
@@ -210,6 +216,7 @@ def _resolve_clickbank(product_id: str, affiliate_tag: str) -> ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via the CJ Affiliate Product Search API."""
     api_key = config.app.get("cj_api_key", "")
     website_id = affiliate_tag or config.app.get("cj_website_id", "")
     if not api_key or not website_id:
@@ -228,17 +235,22 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
     )
     resp.raise_for_status()
 
-    # CJ returns XML; parse the first product naively
-    text = resp.text
-    def _extract(tag: str) -> str:
-        m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
-        return m.group(1).strip() if m else ""
+    from defusedxml import ElementTree as _ET
 
-    title = _extract("name")
-    description = _extract("description")
-    price = _extract("sale-price") or _extract("price")
-    buy_url = _extract("buy-url")
-    category = _extract("category")
+    def _extract(root, tag: str) -> str:
+        elem = root.find(f".//{tag}")
+        return (elem.text or "").strip() if elem is not None else ""
+
+    try:
+        root = _ET.fromstring(resp.text)
+    except Exception as exc:
+        raise ValueError(f"CJ returned unparseable XML: {exc}") from exc
+
+    title = _extract(root, "name")
+    description = _extract(root, "description")
+    price = _extract(root, "sale-price") or _extract(root, "price")
+    buy_url = _extract(root, "buy-url")
+    category = _extract(root, "category")
 
     if not title:
         raise ValueError(f"CJ returned no results for '{product_id}'")
@@ -259,6 +271,7 @@ def _resolve_cj(product_id: str, affiliate_tag: str) -> ProductInfo:
 # ---------------------------------------------------------------------------
 
 def _resolve_awin(product_id: str, affiliate_tag: str) -> ProductInfo:
+    """Resolve a product via the Awin Product Feed API."""
     api_key = config.app.get("awin_api_key", "")
     publisher_id = affiliate_tag or config.app.get("awin_publisher_id", "")
     if not api_key or not publisher_id:
@@ -296,10 +309,15 @@ def _resolve_awin(product_id: str, affiliate_tag: str) -> ProductInfo:
 
 def _resolve_manual(product_id: str, affiliate_tag: str,
                     title: str = "", description: str = "",
-                    price: str = "", category: str = "") -> ProductInfo:
+                    price: str = "", category: str = "",
+                    affiliate_url: str = "") -> ProductInfo:
+    """Construct a ProductInfo directly from caller-supplied fields."""
+    resolved_url = affiliate_url or (
+        product_id if product_id.startswith("http") else affiliate_tag
+    )
     return ProductInfo(
         title=title or product_id,
-        affiliate_url=product_id if product_id.startswith("http") else affiliate_tag,
+        affiliate_url=resolved_url,
         network="manual",
         description=description,
         price=price,
@@ -340,8 +358,9 @@ def resolve_product(
             return _resolve_cj(product_id, affiliate_tag)
         if network == "awin":
             return _resolve_awin(product_id, affiliate_tag)
-        # manual / fallback
-        return _resolve_manual(product_id, affiliate_tag, **kwargs)
+        if network == "manual":
+            return _resolve_manual(product_id, affiliate_tag, **kwargs)
+        raise ValueError(f"Unsupported network '{network}'. Choose from: {SUPPORTED_NETWORKS}")
     except Exception as e:
         logger.error(f"affiliate resolver [{network}] failed: {e}")
         raise
