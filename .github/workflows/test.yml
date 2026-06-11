@@ -30,6 +30,7 @@ jobs:
           pip install \
             loguru \
             pyyaml \
+            toml \
             fastapi \
             httpx \
             stripe \
