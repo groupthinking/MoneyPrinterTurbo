@@ -28,6 +28,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: Install testable dependencies
         # Only install deps needed by the modules that can run without
@@ -35,16 +36,16 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install \
-            loguru \
-            pyyaml \
-            toml \
-            fastapi \
-            httpx \
-            stripe \
-            google-auth \
-            google-auth-oauthlib \
-            google-api-python-client \
-            defusedxml
+            loguru==0.7.3 \
+            pyyaml==6.0.3 \
+            toml==0.10.2 \
+            fastapi==0.115.6 \
+            httpx==0.28.1 \
+            stripe==15.2.0 \
+            google-auth==2.53.0 \
+            google-auth-oauthlib==1.4.0 \
+            google-api-python-client==2.197.0 \
+            defusedxml==0.7.1
 
       - name: Create minimal config.toml
         # Tests that import app.config require a config file to exist.
