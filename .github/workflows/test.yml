@@ -1,0 +1,55 @@
+name: Tests
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements-ci.txt'
+
+      - name: Install testable dependencies
+        # Only install deps needed by the modules that can run without
+        # native binaries (ffmpeg, GPU drivers) or paid API keys.
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-ci.txt
+
+      - name: Create minimal config.toml
+        # Tests that import app.config require a config file to exist.
+        run: cp config.example.toml config.toml
+
+      - name: Run testable unit tests
+        # Excluded modules require native packages (openai, moviepy, azure-tts,
+        # faster-whisper) not available in CI without heavy setup.
+        run: |
+          python -m unittest \
+            test.services.test_youtube \
+            test.services.test_youtube_ctrl \
+            test.services.test_authorize_youtube \
+            test.services.test_state \
+            -v 2>&1
