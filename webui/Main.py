@@ -319,14 +319,14 @@ if not config.app.get("hide_config", False):
             if llm_provider == "oneapi":
                 if not llm_model_name:
                     llm_model_name = (
-                        "claude-3-5-sonnet-20240620"  # 默认模型，可以根据需要调整
+                        "claude-opus-4-8"  # 默认模型，可以根据需要调整
                     )
                 with llm_helper:
                     tips = """
                         ##### OneAPI 配置说明
                         - **API Key**: 填写您的 OneAPI 密钥
                         - **Base Url**: 填写 OneAPI 的基础 URL
-                        - **Model Name**: 填写您要使用的模型名称，例如 claude-3-5-sonnet-20240620
+                        - **Model Name**: 填写您要使用的模型名称，例如 claude-opus-4-8
                         """
 
             if llm_provider == "qwen":
