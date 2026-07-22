@@ -117,4 +117,4 @@
 
 - `#843` 仅做了 mock 验证，尚未使用真实 Upload-Post 密钥联调
 - `#848` 仅验证了 Docker GPU 配置解析，尚未在真实 GPU 环境运行
-- 当前 API 默认 `video_transition_mode=null` 时，完整视频任务仍存在回归风险
+- ✅ `video_transition_mode=null` 崩溃已加兼容防护：`app/services/video.py:297` 通过 `getattr(video_transition_mode, "value", video_transition_mode)` 处理空值；无需为此边缘场景继续阻塞分发路线
