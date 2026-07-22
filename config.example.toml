@@ -169,6 +169,66 @@ upload_post_platforms = ["tiktok", "instagram"]
 upload_post_auto_upload = false
 
 ##########################################################################
+# Omni-Distribution (phase-gated channels)
+#
+# The new distribution layer lets you publish generated videos to multiple
+# channels. Each channel is validated independently and failures are isolated.
+# Start with a small pilot and expand by adding channels to enabled_channels.
+#
+# Built-in channels:
+#   - youtube     (YouTube Data API v3; requires OAuth setup above)
+#   - upload_post (TikTok/Instagram via Upload-Post API)
+#
+# MCP / pilot channels (stubs — implement or connect an MCP to enable):
+#   - composio      (YouTube/Google/TikTok/Meta actions via Composio MCP)
+#   - shopify       (Shopify + MailerLite via MCP)
+#   - browserbase   (Browserbase MCP fallback for web platforms)
+#   - playwright    (Playwright MCP fallback for web platforms)
+#   - chrome_devtools (Chrome DevTools Protocol MCP fallback)
+##########################################################################
+
+[distribution]
+enabled = true
+enabled_channels = ["youtube", "upload_post"]
+fallback_channels = ["browserbase", "playwright", "chrome_devtools"]
+
+[distribution.channels.youtube]
+enabled = true
+# Inherits youtube_client_id / youtube_client_secret / youtube_default_privacy
+
+[distribution.channels.upload_post]
+enabled = false
+api_key = ""
+username = ""
+platforms = ["tiktok", "instagram"]
+
+[distribution.channels.composio]
+enabled = false
+mcp_url = ""
+api_key = ""
+# supported_platforms = ["youtube", "google", "tiktok", "meta"]
+
+[distribution.channels.shopify]
+enabled = false
+mcp_url = ""
+api_key = ""
+shop_domain = ""
+mailerlite_api_key = ""
+
+[distribution.channels.browserbase]
+enabled = false
+mcp_url = ""
+api_key = ""
+
+[distribution.channels.playwright]
+enabled = false
+mcp_url = ""
+
+[distribution.channels.chrome_devtools]
+enabled = false
+mcp_url = ""
+
+##########################################################################
 # Affiliate Marketing Networks
 ##########################################################################
 
