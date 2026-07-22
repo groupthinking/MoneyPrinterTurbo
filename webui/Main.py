@@ -111,17 +111,12 @@ support_locales = [
     "tr-TR",
 ]
 
-# Distribution UI defaults
+# Distribution UI defaults — only built-in channels are selectable in the UI.
+# Pilot/stub adapters remain available via the registry for programmatic use.
 _DIST_DEFAULT_CHANNELS = ["youtube", "upload_post"]
-_DIST_FALLBACK_CHANNELS = ["browserbase", "playwright", "chrome_devtools"]
 _DIST_ALL_CHANNELS = [
     "youtube",
     "upload_post",
-    "composio",
-    "shopify",
-    "browserbase",
-    "playwright",
-    "chrome_devtools",
 ]
 
 
@@ -536,7 +531,7 @@ if not config.app.get("hide_config", False):
             dist_cfg = config._cfg.setdefault("distribution", {})
             dist_cfg.setdefault("enabled", True)
             dist_cfg.setdefault("enabled_channels", _DIST_DEFAULT_CHANNELS)
-            dist_cfg.setdefault("fallback_channels", _DIST_FALLBACK_CHANNELS)
+            dist_cfg.setdefault("fallback_channels", [])
             dist_cfg.setdefault("channels", {})
 
             dist_enabled = st.checkbox(
@@ -557,23 +552,12 @@ if not config.app.get("hide_config", False):
             )
             dist_cfg["enabled_channels"] = enabled_channels
 
-            _saved_fallback = dist_cfg.get("fallback_channels", _DIST_FALLBACK_CHANNELS)
-            if isinstance(_saved_fallback, str):
-                _saved_fallback = [_saved_fallback]
-            fallback_channels = st.multiselect(
-                tr("Fallback Channels"),
-                options=_DIST_FALLBACK_CHANNELS,
-                default=[c for c in _saved_fallback if c in _DIST_FALLBACK_CHANNELS],
-                key="dist_fallback_channels",
-            )
-            dist_cfg["fallback_channels"] = fallback_channels
+            dist_cfg["fallback_channels"] = dist_cfg.get("fallback_channels", [])
 
-            _channel_display_names = {c: f"{c.replace('_', ' ').title()} Config" for c in _DIST_ALL_CHANNELS}
-            _channel_display_names.update({
+            _channel_display_names = {
                 "youtube": "YouTube Config",
                 "upload_post": "Upload-Post Config",
-                "chrome_devtools": "Chrome DevTools Config",
-            })
+            }
 
             def _channel_display_name(channel: str) -> str:
                 return _channel_display_names.get(channel, f"{channel.replace('_', ' ').title()} Config")
