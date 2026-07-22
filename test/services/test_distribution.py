@@ -116,7 +116,7 @@ class TestDistribute(unittest.TestCase):
             "channels": {"fake_for_test": {}},
         }
         payload = DistributionPayload(video_path="/tmp/x.mp4", title="t")
-        with patch.object(ADAPTER_REGISTRY["fake_for_test"], "upload", return_value=DistributionResult(
+        with patch.object(_FakeAdapter, "upload", return_value=DistributionResult(
             channel="fake_for_test", platform="fake_platform", success=True
         )):
             results = distribute(payload)

@@ -369,10 +369,11 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         description = video_script or params.video_subject or ""
         if affiliate_url:
             description = f"{description}\n\n{affiliate_url}".strip()
+        _MAX_TITLE_LENGTH = 100
         for video_path in final_video_paths:
             payload = DistributionPayload(
                 video_path=video_path,
-                title=(params.video_subject or "")[:100] or "New Video",
+                title=(params.video_subject or "")[:_MAX_TITLE_LENGTH] or "New Video",
                 description=description,
                 tags=["shorts", "viral"],
                 affiliate_url=affiliate_url,

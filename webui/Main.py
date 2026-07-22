@@ -111,6 +111,19 @@ support_locales = [
     "tr-TR",
 ]
 
+# Distribution UI defaults
+_DIST_DEFAULT_CHANNELS = ["youtube", "upload_post"]
+_DIST_FALLBACK_CHANNELS = ["browserbase", "playwright", "chrome_devtools"]
+_DIST_ALL_CHANNELS = [
+    "youtube",
+    "upload_post",
+    "composio",
+    "shopify",
+    "browserbase",
+    "playwright",
+    "chrome_devtools",
+]
+
 
 def get_all_fonts():
     fonts = []
@@ -522,8 +535,8 @@ if not config.app.get("hide_config", False):
 
             dist_cfg = config._cfg.setdefault("distribution", {})
             dist_cfg.setdefault("enabled", True)
-            dist_cfg.setdefault("enabled_channels", ["youtube", "upload_post"])
-            dist_cfg.setdefault("fallback_channels", ["browserbase", "playwright", "chrome_devtools"])
+            dist_cfg.setdefault("enabled_channels", _DIST_DEFAULT_CHANNELS)
+            dist_cfg.setdefault("fallback_channels", _DIST_FALLBACK_CHANNELS)
             dist_cfg.setdefault("channels", {})
 
             dist_enabled = st.checkbox(
@@ -533,29 +546,27 @@ if not config.app.get("hide_config", False):
             )
             dist_cfg["enabled"] = dist_enabled
 
-            _channel_options = ["youtube", "upload_post", "composio", "shopify", "browserbase", "playwright", "chrome_devtools"]
-            _saved_channels = dist_cfg.get("enabled_channels", ["youtube", "upload_post"])
+            _saved_channels = dist_cfg.get("enabled_channels", _DIST_DEFAULT_CHANNELS)
             if isinstance(_saved_channels, str):
                 _saved_channels = [_saved_channels]
             enabled_channels = st.multiselect(
                 tr("Enabled Channels"),
-                options=_channel_options,
-                default=[c for c in _saved_channels if c in _channel_options],
+                options=_DIST_ALL_CHANNELS,
+                default=[c for c in _saved_channels if c in _DIST_ALL_CHANNELS],
                 key="dist_enabled_channels",
             )
-            dist_cfg["enabled_channels"] = enabled_channels or ["youtube", "upload_post"]
+            dist_cfg["enabled_channels"] = enabled_channels or _DIST_DEFAULT_CHANNELS
 
-            _fallback_options = ["browserbase", "playwright", "chrome_devtools"]
-            _saved_fallback = dist_cfg.get("fallback_channels", ["browserbase", "playwright", "chrome_devtools"])
+            _saved_fallback = dist_cfg.get("fallback_channels", _DIST_FALLBACK_CHANNELS)
             if isinstance(_saved_fallback, str):
                 _saved_fallback = [_saved_fallback]
             fallback_channels = st.multiselect(
                 tr("Fallback Channels"),
-                options=_fallback_options,
-                default=[c for c in _saved_fallback if c in _fallback_options],
+                options=_DIST_FALLBACK_CHANNELS,
+                default=[c for c in _saved_fallback if c in _DIST_FALLBACK_CHANNELS],
                 key="dist_fallback_channels",
             )
-            dist_cfg["fallback_channels"] = fallback_channels or ["browserbase", "playwright", "chrome_devtools"]
+            dist_cfg["fallback_channels"] = fallback_channels or _DIST_FALLBACK_CHANNELS
 
             _channel_display_names = {
                 "youtube": "YouTube Config",
@@ -567,7 +578,7 @@ if not config.app.get("hide_config", False):
                 "chrome_devtools": "Chrome DevTools Config",
             }
             with st.expander(tr("Channel Configurations"), expanded=False):
-                for channel in _channel_options:
+                for channel in _DIST_ALL_CHANNELS:
                     channel_cfg = dist_cfg["channels"].setdefault(channel, {})
                     st.write(tr(_channel_display_names.get(channel, f"{channel.replace('_', ' ').title()} Config")))
                     channel_cfg["enabled"] = st.checkbox(
