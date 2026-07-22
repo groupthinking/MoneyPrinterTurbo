@@ -557,10 +557,19 @@ if not config.app.get("hide_config", False):
             )
             dist_cfg["fallback_channels"] = fallback_channels or ["browserbase", "playwright", "chrome_devtools"]
 
+            _channel_display_names = {
+                "youtube": "YouTube Config",
+                "upload_post": "Upload-Post Config",
+                "composio": "Composio Config",
+                "shopify": "Shopify Config",
+                "browserbase": "Browserbase Config",
+                "playwright": "Playwright Config",
+                "chrome_devtools": "Chrome DevTools Config",
+            }
             with st.expander(tr("Channel Configurations"), expanded=False):
                 for channel in _channel_options:
                     channel_cfg = dist_cfg["channels"].setdefault(channel, {})
-                    st.write(tr(f"{channel.title()} Config"))
+                    st.write(tr(_channel_display_names.get(channel, f"{channel.replace('_', ' ').title()} Config")))
                     channel_cfg["enabled"] = st.checkbox(
                         tr("Enabled"),
                         value=channel_cfg.get("enabled", channel in ("youtube",)),

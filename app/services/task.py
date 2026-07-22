@@ -399,8 +399,9 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         {"success": r["success"], "platform": r["platform"], "request_id": r.get("request_id"), "error": r.get("error")}
         for r in distribution_results if r["channel"] == "upload_post"
     ]
+    youtube_privacy = config.app.get("youtube_default_privacy", "public")
     youtube_results = [
-        {"success": r["success"], **({"video_id": "", "url": r.get("url"), "privacy": payload.privacy_status} if r["success"] else {"error": r.get("error")})}
+        {"success": r["success"], **({"video_id": "", "url": r.get("url"), "privacy": youtube_privacy} if r["success"] else {"error": r.get("error")})}
         for r in distribution_results if r["channel"] == "youtube"
     ]
 

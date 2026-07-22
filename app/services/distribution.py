@@ -94,6 +94,8 @@ class DistributionAdapter(ABC):
         """Upload a video and return a DistributionResult."""
         raise NotImplementedError
 
+    _MAX_CAPTION_LENGTH = 2200
+
     def _build_caption(self, payload: DistributionPayload) -> str:
         """Build a cross-post caption with affiliate link and disclosure."""
         parts = [payload.title]
@@ -102,7 +104,7 @@ class DistributionAdapter(ABC):
         if payload.affiliate_url:
             parts.append(payload.affiliate_url)
         parts += ["#shorts", "#viral"]
-        return " ".join(parts)[:2200]
+        return " ".join(parts)[: self._MAX_CAPTION_LENGTH]
 
 
 # ---------------------------------------------------------------------------
