@@ -313,8 +313,12 @@ def validate_all() -> dict[str, dict[str, Any]]:
     return {name: validate_channel(name) for name in ADAPTER_REGISTRY}
 
 
-def distribute(payload: DistributionPayload) -> list[DistributionResult]:
+def distribute(payload: DistributionPayload, *, force_enabled: bool | None = None) -> list[DistributionResult]:
     """Distribute a video to all enabled channels, isolating failures."""
+    dist_cfg = config._cfg.get("distribution", {})
+    if force_enabled is False or (force_enabled is None and not dist_cfg.get("enabled", True)):
+        logger.info("Omni-distribution is disabled; skipping distribution")
+        return []
     results: list[DistributionResult] = []
     for channel_name in _get_enabled_channels():
         adapter_cls = ADAPTER_REGISTRY.get(channel_name)
