@@ -94,8 +94,9 @@ class DistributionAdapter(ABC):
         """Upload a video and return a DistributionResult."""
         raise NotImplementedError
 
-    MAX_CAPTION_LENGTH = 2200
-    MAX_TITLE_LENGTH = 100
+    # Subclasses may override per-platform limits
+    max_caption_length = 2200
+    max_title_length = 100
 
     def _build_caption(self, payload: DistributionPayload) -> str:
         """Build a cross-post caption with affiliate link and disclosure."""
@@ -105,7 +106,7 @@ class DistributionAdapter(ABC):
         if payload.affiliate_url:
             parts.append(payload.affiliate_url)
         parts += ["#shorts", "#viral"]
-        return " ".join(parts)[: self.MAX_CAPTION_LENGTH]
+        return " ".join(parts)[: self.max_caption_length]
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ class YouTubeAdapter(DistributionAdapter):
         try:
             result = yt_svc.upload_video(
                 video_path=payload.video_path,
-                title=payload.title[: self.MAX_TITLE_LENGTH] or "New Video",
+                title=payload.title[: self.max_title_length] or "New Video",
                 description=payload.description,
                 tags=payload.tags or ["shorts", "viral"],
                 privacy_status=payload.privacy_status,

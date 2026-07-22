@@ -52,7 +52,7 @@ class TestDistributionModels(unittest.TestCase):
 
 class TestYouTubeAdapter(unittest.TestCase):
     def test_validate_reports_missing_credentials(self):
-        with patch.object(config, "app", {**config.app, "youtube_client_id": "", "youtube_client_secret": ""}):
+        with patch.dict(config.app, {"youtube_client_id": "", "youtube_client_secret": ""}):
             adapter = YouTubeAdapter({})
             result = adapter.validate()
             self.assertFalse(result["configured"])
@@ -72,7 +72,7 @@ class TestUploadPostAdapter(unittest.TestCase):
         self.assertIn("disabled", result["error"])
 
     def test_validate_missing_credentials(self):
-        with patch.object(config, "app", {**config.app, "upload_post_api_key": "", "upload_post_username": ""}):
+        with patch.dict(config.app, {"upload_post_api_key": "", "upload_post_username": ""}):
             adapter = UploadPostAdapter({"enabled": True})
             result = adapter.validate()
             self.assertFalse(result["configured"])

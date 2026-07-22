@@ -555,7 +555,7 @@ if not config.app.get("hide_config", False):
                 default=[c for c in _saved_channels if c in _DIST_ALL_CHANNELS],
                 key="dist_enabled_channels",
             )
-            dist_cfg["enabled_channels"] = enabled_channels or _DIST_DEFAULT_CHANNELS
+            dist_cfg["enabled_channels"] = enabled_channels
 
             _saved_fallback = dist_cfg.get("fallback_channels", _DIST_FALLBACK_CHANNELS)
             if isinstance(_saved_fallback, str):
@@ -566,7 +566,7 @@ if not config.app.get("hide_config", False):
                 default=[c for c in _saved_fallback if c in _DIST_FALLBACK_CHANNELS],
                 key="dist_fallback_channels",
             )
-            dist_cfg["fallback_channels"] = fallback_channels or _DIST_FALLBACK_CHANNELS
+            dist_cfg["fallback_channels"] = fallback_channels
 
             _channel_display_names = {
                 "youtube": "YouTube Config",
@@ -612,7 +612,7 @@ if not config.app.get("hide_config", False):
                             options=_platform_options,
                             default=[p for p in _saved_platforms if p in _platform_options],
                             key=f"dist_{channel}_platforms",
-                        ) or _platform_options
+                        )
                     if channel == "shopify":
                         channel_cfg["shop_domain"] = st.text_input(
                             tr("Shop Domain"),
