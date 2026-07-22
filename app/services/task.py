@@ -401,7 +401,14 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     def _to_legacy_youtube_result(r: dict) -> dict:
         base = {"success": r["success"]}
         if r["success"]:
-            base.update({"video_id": "", "url": r.get("url"), "privacy": youtube_privacy})
+            url = r.get("url", "")
+            video_id = ""
+            if url:
+                # https://www.youtube.com/watch?v=VIDEO_ID
+                from urllib.parse import parse_qs, urlparse
+                parsed = urlparse(url)
+                video_id = parse_qs(parsed.query).get("v", [""])[0]
+            base.update({"video_id": video_id, "url": url, "privacy": youtube_privacy})
         else:
             base["error"] = r.get("error")
         return base

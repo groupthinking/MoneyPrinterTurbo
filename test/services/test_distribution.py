@@ -116,9 +116,11 @@ class TestDistribute(unittest.TestCase):
             "channels": {"fake_for_test": {}},
         }
         payload = DistributionPayload(video_path="/tmp/x.mp4", title="t")
-        with patch.object(_FakeAdapter, "upload", return_value=DistributionResult(
-            channel="fake_for_test", platform="fake_platform", success=True
-        )):
+
+        def _fake_upload(_self, _payload):
+            return DistributionResult(channel="fake_for_test", platform="fake_platform", success=True)
+
+        with patch.object(_FakeAdapter, "upload", _fake_upload):
             results = distribute(payload)
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].success)

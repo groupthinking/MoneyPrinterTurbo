@@ -184,6 +184,7 @@ class UploadPostAdapter(DistributionAdapter):
         from app.services import upload_post as up_svc
 
         platforms = self.cfg.get("platforms") or config.app.get("upload_post_platforms", ["tiktok", "instagram"])
+        # upload_post_service.upload_video accepts an optional platforms list
         result = up_svc.upload_post_service.upload_video(
             video_path=payload.video_path,
             title=self._build_caption(payload),
@@ -232,6 +233,7 @@ class _StubAdapter(DistributionAdapter):
             platform=self.platforms[0] if self.platforms else self.name,
             success=False,
             error=f"{self.name} adapter is a pilot stub and not yet implemented",
+            details={"status": "not_implemented"},
         )
 
 
