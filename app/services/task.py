@@ -10,6 +10,7 @@ from app.models import const
 from app.models.schema import VideoConcatMode, VideoParams
 from app.services import llm, material, subtitle, video, voice, upload_post
 from app.services import state as sm
+from app.services.distribution import DistributionPayload, distribute
 from app.utils import utils
 
 
@@ -359,48 +360,49 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         f"task {task_id} finished, generated {len(final_video_paths)} videos."
     )
 
-    # 7. Cross-post to TikTok/Instagram (if enabled)
-    cross_post_results = []
-    if upload_post.upload_post_service.is_configured() and upload_post.upload_post_service.auto_upload:
-        logger.info("\n\n## cross-posting videos to TikTok/Instagram")
+    # 7. Omni-distribution (phase-gated channels with isolated failures)
+    distribution_results: list[dict] = []
+    dist_cfg = config._cfg.get("distribution", {})
+    if dist_cfg.get("enabled", True):
+        logger.info("\n\n## distributing videos to enabled channels")
         affiliate_url = getattr(params, "affiliate_url", "") or ""
-        include_disclosure = getattr(params, "affiliate_disclosure", True)
+        description = video_script or params.video_subject or ""
+        if affiliate_url:
+            description = f"{description}\n\n{affiliate_url}".strip()
         for video_path in final_video_paths:
-            result = upload_post.upload_post_service.upload_video(
+            payload = DistributionPayload(
                 video_path=video_path,
-                title=params.video_subject or "Check out this video! #shorts #viral",
+                title=(params.video_subject or "")[:100] or "New Video",
+                description=description,
+                tags=["shorts", "viral"],
                 affiliate_url=affiliate_url,
-                include_disclosure=include_disclosure,
+                include_disclosure=getattr(params, "affiliate_disclosure", True),
+                privacy_status=config.app.get("youtube_default_privacy", "public"),
             )
-            cross_post_results.append(result)
-            if result.get('success'):
-                logger.info(f"✅ Cross-posted: {video_path}")
-            else:
-                logger.warning(f"⚠️ Failed to cross-post: {video_path} - {result.get('error', 'Unknown error')}")
+            results = distribute(payload)
+            for r in results:
+                distribution_results.append({
+                    "channel": r.channel,
+                    "platform": r.platform,
+                    "success": r.success,
+                    "request_id": r.request_id,
+                    "url": r.url,
+                    "error": r.error,
+                })
+                if r.success:
+                    logger.info(f"✅ Distributed to {r.channel}: {r.url or r.request_id}")
+                else:
+                    logger.warning(f"⚠️ Distribution to {r.channel} failed: {r.error}")
 
-    # 8. Upload to YouTube (if authorised and enabled)
-    youtube_results = []
-    if config.app.get("youtube_auto_upload", False):
-        from app.services import youtube as yt_svc
-        if yt_svc.is_authorised():
-            logger.info("\n\n## uploading videos to YouTube")
-            affiliate_url = getattr(params, "affiliate_url", "") or ""
-            description = video_script or params.video_subject or ""
-            if affiliate_url:
-                description = f"{description}\n\n{affiliate_url}".strip()
-            for video_path in final_video_paths:
-                try:
-                    yt_result = yt_svc.upload_video(
-                        video_path=video_path,
-                        title=(params.video_subject or "")[:100] or "New Video",
-                        description=description,
-                        tags=["shorts", "viral"],
-                    )
-                    youtube_results.append({"success": True, **yt_result})
-                    logger.info(f"✅ YouTube upload: {yt_result['url']}")
-                except Exception as exc:
-                    logger.warning(f"⚠️ YouTube upload failed: {exc}")
-                    youtube_results.append({"success": False, "error": str(exc)})
+    # Preserve legacy response fields for backward compatibility
+    cross_post_results = [
+        {"success": r["success"], "platform": r["platform"], "request_id": r.get("request_id"), "error": r.get("error")}
+        for r in distribution_results if r["channel"] == "upload_post"
+    ]
+    youtube_results = [
+        {"success": r["success"], **({"video_id": "", "url": r.get("url"), "privacy": payload.privacy_status} if r["success"] else {"error": r.get("error")})}
+        for r in distribution_results if r["channel"] == "youtube"
+    ]
 
     kwargs = {
         "videos": final_video_paths,
@@ -411,6 +413,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         "audio_duration": audio_duration,
         "subtitle_path": subtitle_path,
         "materials": downloaded_videos,
+        "distribution_results": distribution_results if distribution_results else None,
         "cross_post_results": cross_post_results if cross_post_results else None,
         "youtube_results": youtube_results if youtube_results else None,
     }
