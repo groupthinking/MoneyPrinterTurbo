@@ -583,7 +583,7 @@ if not config.app.get("hide_config", False):
                     st.write(f"**{tr(_channel_display_names.get(channel, f'{channel.replace('_', ' ').title()} Config'))}**")
                     channel_cfg["enabled"] = st.checkbox(
                         tr("Enabled"),
-                        value=channel_cfg.get("enabled", channel in {"youtube"}),
+                        value=channel_cfg.get("enabled", channel == "youtube"),
                         key=f"dist_{channel}_enabled",
                     )
                     channel_cfg["mcp_url"] = st.text_input(

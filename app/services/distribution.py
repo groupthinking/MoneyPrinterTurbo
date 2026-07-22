@@ -216,7 +216,7 @@ class _StubAdapter(DistributionAdapter):
     """Base for adapters that are not implemented yet but appear in config."""
 
     def is_configured(self) -> bool:
-        return bool(self.cfg.get("enabled")) and bool(self.cfg.get("mcp_url") or self.cfg.get("api_key"))
+        return self.cfg.get("enabled") and (self.cfg.get("mcp_url") or self.cfg.get("api_key"))
 
     def validate(self) -> dict[str, Any]:
         if not self.cfg.get("enabled"):

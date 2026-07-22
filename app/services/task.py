@@ -396,6 +396,8 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
                     logger.warning(f"⚠️ Distribution to {r.channel} failed: {r.error}")
 
     # Preserve legacy response fields for backward compatibility
+    youtube_privacy = config.app.get("youtube_default_privacy", "public")
+
     def _to_legacy_youtube_result(r: dict) -> dict:
         base = {"success": r["success"]}
         if r["success"]:
@@ -408,7 +410,6 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
         {"success": r["success"], "platform": r["platform"], "request_id": r.get("request_id"), "error": r.get("error")}
         for r in distribution_results if r["channel"] == "upload_post"
     ]
-    youtube_privacy = config.app.get("youtube_default_privacy", "public")
     youtube_results = [_to_legacy_youtube_result(r) for r in distribution_results if r["channel"] == "youtube"]
 
     kwargs = {
