@@ -95,6 +95,7 @@ class DistributionAdapter(ABC):
         raise NotImplementedError
 
     MAX_CAPTION_LENGTH = 2200
+    MAX_TITLE_LENGTH = 100
 
     def _build_caption(self, payload: DistributionPayload) -> str:
         """Build a cross-post caption with affiliate link and disclosure."""
@@ -132,11 +133,12 @@ class YouTubeAdapter(DistributionAdapter):
     def upload(self, payload: DistributionPayload) -> DistributionResult:
         from app.services import youtube as yt_svc
 
-        MAX_TITLE_LENGTH = 100
+        from googleapiclient.errors import HttpError
+
         try:
             result = yt_svc.upload_video(
                 video_path=payload.video_path,
-                title=payload.title[:MAX_TITLE_LENGTH] or "New Video",
+                title=payload.title[: self.MAX_TITLE_LENGTH] or "New Video",
                 description=payload.description,
                 tags=payload.tags or ["shorts", "viral"],
                 privacy_status=payload.privacy_status,
@@ -148,7 +150,7 @@ class YouTubeAdapter(DistributionAdapter):
                 url=result.get("url"),
                 details=result,
             )
-        except Exception as exc:  # pragma: no cover - best-effort isolation
+        except (HttpError, FileNotFoundError, RuntimeError) as exc:
             logger.warning(f"YouTube distribution failed: {exc}")
             return DistributionResult(
                 channel=self.name,
@@ -226,7 +228,7 @@ class _StubAdapter(DistributionAdapter):
         logger.info(f"[{self.name}] pilot stub invoked for {payload.video_path}")
         return DistributionResult(
             channel=self.name,
-            platform=self.cfg.get("platform", self.name),
+            platform=self.platforms[0] if self.platforms else self.name,
             success=False,
             error=f"{self.name} adapter is a pilot stub and not yet implemented",
         )

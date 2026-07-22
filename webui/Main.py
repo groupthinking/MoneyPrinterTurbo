@@ -531,7 +531,7 @@ if not config.app.get("hide_config", False):
             )
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
-            st.write(tr("Distribution Channels"))
+            st.write(f"**{tr('Distribution Channels')}**")
 
             dist_cfg = config._cfg.setdefault("distribution", {})
             dist_cfg.setdefault("enabled", True)
@@ -580,10 +580,10 @@ if not config.app.get("hide_config", False):
             with st.expander(tr("Channel Configurations"), expanded=False):
                 for channel in _DIST_ALL_CHANNELS:
                     channel_cfg = dist_cfg["channels"].setdefault(channel, {})
-                    st.write(tr(_channel_display_names.get(channel, f"{channel.replace('_', ' ').title()} Config")))
+                    st.write(f"**{tr(_channel_display_names.get(channel, f'{channel.replace('_', ' ').title()} Config'))}**")
                     channel_cfg["enabled"] = st.checkbox(
                         tr("Enabled"),
-                        value=channel_cfg.get("enabled", channel in ("youtube",)),
+                        value=channel_cfg.get("enabled", channel in {"youtube"}),
                         key=f"dist_{channel}_enabled",
                     )
                     channel_cfg["mcp_url"] = st.text_input(

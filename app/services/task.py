@@ -363,13 +363,13 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
     # 7. Omni-distribution (phase-gated channels with isolated failures)
     distribution_results: list[dict] = []
     dist_cfg = config._cfg.get("distribution", {})
+    _MAX_TITLE_LENGTH = 100
     if dist_cfg.get("enabled", True):
         logger.info("\n\n## distributing videos to enabled channels")
         affiliate_url = getattr(params, "affiliate_url", "") or ""
         description = video_script or params.video_subject or ""
         if affiliate_url:
             description = f"{description}\n\n{affiliate_url}".strip()
-        _MAX_TITLE_LENGTH = 100
         for video_path in final_video_paths:
             payload = DistributionPayload(
                 video_path=video_path,
