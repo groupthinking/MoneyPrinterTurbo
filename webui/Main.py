@@ -111,6 +111,14 @@ support_locales = [
     "tr-TR",
 ]
 
+# Distribution UI defaults — only built-in channels are selectable in the UI.
+# Pilot/stub adapters remain available via the registry for programmatic use.
+_DIST_DEFAULT_CHANNELS = ["youtube", "upload_post"]
+_DIST_ALL_CHANNELS = [
+    "youtube",
+    "upload_post",
+]
+
 
 def get_all_fonts():
     fonts = []
@@ -518,49 +526,99 @@ if not config.app.get("hide_config", False):
             )
             save_keys_to_config("pixabay_api_keys", pixabay_api_key)
 
-            st.write(tr("Cross-Post Settings"))
+            st.write(f"**{tr('Distribution Channels')}**")
 
-            upload_post_enabled = st.checkbox(
-                tr("Enable Cross-Post"),
-                value=config.app.get("upload_post_enabled", False),
+            dist_cfg = config._cfg.setdefault("distribution", {})
+            dist_cfg.setdefault("enabled", True)
+            dist_cfg.setdefault("enabled_channels", _DIST_DEFAULT_CHANNELS)
+            dist_cfg.setdefault("fallback_channels", [])
+            dist_cfg.setdefault("channels", {})
+
+            dist_enabled = st.checkbox(
+                tr("Enable Distribution"),
+                value=dist_cfg.get("enabled", True),
+                key="dist_enabled",
             )
+            dist_cfg["enabled"] = dist_enabled
+
+            _saved_channels = dist_cfg.get("enabled_channels", _DIST_DEFAULT_CHANNELS)
+            if isinstance(_saved_channels, str):
+                _saved_channels = [_saved_channels]
+            enabled_channels = st.multiselect(
+                tr("Enabled Channels"),
+                options=_DIST_ALL_CHANNELS,
+                default=[c for c in _saved_channels if c in _DIST_ALL_CHANNELS],
+                key="dist_enabled_channels",
+            )
+            dist_cfg["enabled_channels"] = enabled_channels
+
+            dist_cfg["fallback_channels"] = dist_cfg.get("fallback_channels", [])
+
+            _channel_display_names = {
+                "youtube": "YouTube Config",
+                "upload_post": "Upload-Post Config",
+            }
+
+            def _channel_display_name(channel: str) -> str:
+                return _channel_display_names.get(channel, f"{channel.replace('_', ' ').title()} Config")
+
+            with st.expander(tr("Channel Configurations"), expanded=False):
+                for channel in _DIST_ALL_CHANNELS:
+                    channel_cfg = dist_cfg["channels"].setdefault(channel, {})
+                    st.write(f"**{tr(_channel_display_name(channel))}**")
+                    channel_cfg["enabled"] = st.checkbox(
+                        tr("Enabled"),
+                        value=channel_cfg.get("enabled", channel == "youtube"),
+                        key=f"dist_{channel}_enabled",
+                    )
+                    channel_cfg["mcp_url"] = st.text_input(
+                        tr("MCP URL"),
+                        value=channel_cfg.get("mcp_url", ""),
+                        key=f"dist_{channel}_mcp_url",
+                    )
+                    channel_cfg["api_key"] = st.text_input(
+                        tr("API Key"),
+                        value=channel_cfg.get("api_key", ""),
+                        type="password",
+                        key=f"dist_{channel}_api_key",
+                    )
+                    if channel == "upload_post":
+                        channel_cfg["username"] = st.text_input(
+                            tr("Upload-Post Username"),
+                            value=channel_cfg.get("username", config.app.get("upload_post_username", "")),
+                            key=f"dist_{channel}_username",
+                        )
+                        _platform_options = ["tiktok", "instagram"]
+                        _saved_platforms = channel_cfg.get("platforms", config.app.get("upload_post_platforms", ["tiktok", "instagram"]))
+                        if isinstance(_saved_platforms, str):
+                            _saved_platforms = [_saved_platforms]
+                        channel_cfg["platforms"] = st.multiselect(
+                            tr("Platforms"),
+                            options=_platform_options,
+                            default=[p for p in _saved_platforms if p in _platform_options],
+                            key=f"dist_{channel}_platforms",
+                        )
+                    if channel == "shopify":
+                        channel_cfg["shop_domain"] = st.text_input(
+                            tr("Shop Domain"),
+                            value=channel_cfg.get("shop_domain", ""),
+                            key=f"dist_{channel}_shop_domain",
+                        )
+                        channel_cfg["mailerlite_api_key"] = st.text_input(
+                            tr("MailerLite API Key"),
+                            value=channel_cfg.get("mailerlite_api_key", ""),
+                            type="password",
+                            key=f"dist_{channel}_mailerlite_api_key",
+                        )
+
+            # Backward-compat: mirror legacy Upload-Post toggles
+            upload_post_enabled = "upload_post" in dist_cfg["enabled_channels"]
             config.app["upload_post_enabled"] = upload_post_enabled
-
-            upload_post_api_key = st.text_input(
-                tr("Upload-Post API Key"),
-                value=config.app.get("upload_post_api_key", ""),
-                type="password",
-            )
-            config.app["upload_post_api_key"] = upload_post_api_key
-
-            upload_post_username = st.text_input(
-                tr("Upload-Post Username"),
-                value=config.app.get("upload_post_username", ""),
-            )
-            config.app["upload_post_username"] = upload_post_username
-
-            if upload_post_enabled:
-                if not upload_post_api_key:
-                    st.warning(tr("Please Enter Upload-Post API Key"))
-                if not upload_post_username:
-                    st.warning(tr("Please Enter Upload-Post Username"))
-
-            _platform_options = ["tiktok", "instagram"]
-            _saved_platforms = config.app.get("upload_post_platforms", ["tiktok", "instagram"])
-            if isinstance(_saved_platforms, str):
-                _saved_platforms = [_saved_platforms]
-            upload_post_platforms = st.multiselect(
-                tr("Cross-Post Platforms"),
-                options=_platform_options,
-                default=[p for p in _saved_platforms if p in _platform_options],
-            )
-            config.app["upload_post_platforms"] = upload_post_platforms or _platform_options
-
-            upload_post_auto = st.checkbox(
-                tr("Auto Cross-Post"),
-                value=config.app.get("upload_post_auto_upload", False),
-            )
-            config.app["upload_post_auto_upload"] = upload_post_auto
+            _up_cfg = dist_cfg["channels"].get("upload_post", {})
+            config.app["upload_post_api_key"] = _up_cfg.get("api_key", config.app.get("upload_post_api_key", ""))
+            config.app["upload_post_username"] = _up_cfg.get("username", config.app.get("upload_post_username", ""))
+            config.app["upload_post_platforms"] = _up_cfg.get("platforms", config.app.get("upload_post_platforms", ["tiktok", "instagram"]))
+            config.app["upload_post_auto_upload"] = upload_post_enabled
 
             st.write(tr("YouTube Settings"))
 
